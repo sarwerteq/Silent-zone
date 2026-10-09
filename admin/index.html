@@ -1,0 +1,159 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#102820">
+  <title>Silent Zone | Community Admin</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-mark">SZ</div>
+    <div>
+      <h1>Silent Zone</h1>
+      <p>Community Administration</p>
+    </div>
+    <button id="logoutBtn" class="secondary hidden" type="button">
+      Logout
+    </button>
+  </header>
+
+  <main class="container">
+    <section id="loginSection" class="panel">
+      <h2>Admin Login</h2>
+      <p class="muted">Sign in with your assigned admin account.</p>
+
+      <form id="loginForm">
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="username" required>
+
+        <label for="password">Password</label>
+        <input id="password" type="password"
+               autocomplete="current-password" required>
+
+        <button type="submit" class="primary full">Sign in</button>
+      </form>
+      <p id="loginMessage" class="message" role="status"></p>
+    </section>
+
+    <section id="dashboardSection" class="hidden">
+      <div class="welcome">
+        <div>
+          <p class="eyebrow">COMMUNITY DASHBOARD</p>
+          <h2>Manage Silent Zones</h2>
+          <p id="accountInfo" class="muted"></p>
+        </div>
+        <button id="refreshBtn" class="secondary" type="button">
+          Refresh
+        </button>
+      </div>
+
+      <section class="panel">
+        <h3>Create a Silent Zone</h3>
+        <p class="muted">
+          Enter the location coordinates. Only manage areas assigned to your account.
+        </p>
+
+        <form id="zoneForm">
+          <label for="areaId">Assigned Area ID</label>
+          <input id="areaId" required
+                 placeholder="Area UUID from the admin system">
+
+          <label for="zoneName">Zone name</label>
+          <input id="zoneName" required maxlength="120"
+                 placeholder="e.g. Community Library">
+
+          <label for="category">Category</label>
+          <select id="category" required>
+            <option value="MOSQUE">Mosque</option>
+            <option value="SCHOOL">School</option>
+            <option value="HOSPITAL">Hospital</option>
+            <option value="LIBRARY">Library</option>
+            <option value="OTHER">Other</option>
+          </select>
+
+          <div class="two-col">
+            <div>
+              <label for="latitude">Latitude</label>
+              <input id="latitude" type="number" min="-90" max="90"
+                     step="any" required placeholder="e.g. 23.8103">
+            </div>
+            <div>
+              <label for="longitude">Longitude</label>
+              <input id="longitude" type="number" min="-180" max="180"
+                     step="any" required placeholder="e.g. 90.4125">
+            </div>
+          </div>
+
+          <button id="locationBtn" type="button" class="secondary full">
+            Use my current location
+          </button>
+          <p class="muted small">
+            Verify the coordinates before saving. GPS location is not necessarily
+            the location of the public facility.
+          </p>
+
+          <label for="radius">Zone radius</label>
+          <select id="radius">
+            <option value="100">100 metres</option>
+            <option value="200" selected>200 metres</option>
+            <option value="300">300 metres</option>
+            <option value="500">500 metres</option>
+            <option value="1000">1000 metres</option>
+          </select>
+
+          <label for="soundAction">Phone sound action</label>
+          <select id="soundAction">
+            <option value="SILENT">Silent</option>
+            <option value="VIBRATE">Vibrate</option>
+            <option value="DND">Do Not Disturb</option>
+          </select>
+
+          <label class="check-row">
+            <input id="scheduleEnabled" type="checkbox">
+            Enable time schedule
+          </label>
+
+          <div id="scheduleFields" class="two-col hidden">
+            <div>
+              <label for="scheduleStart">Start time</label>
+              <input id="scheduleStart" type="time">
+            </div>
+            <div>
+              <label for="scheduleEnd">End time</label>
+              <input id="scheduleEnd" type="time">
+            </div>
+          </div>
+
+          <label for="timezone">Time zone</label>
+          <input id="timezone" value="Asia/Kolkata" required>
+
+          <button type="submit" class="primary full">Create zone</button>
+        </form>
+        <p id="zoneMessage" class="message" role="status"></p>
+      </section>
+
+      <section class="panel">
+        <div class="section-heading">
+          <div>
+            <h3>Active Zones</h3>
+            <p class="muted">Latest data from the server</p>
+          </div>
+          <span id="zoneCount" class="count">0</span>
+        </div>
+        <div id="zoneList" class="zone-list">
+          <p class="muted">Sign in to load zones.</p>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <footer>
+    <p>Silent Zone · Community safety through quieter spaces</p>
+  </footer>
+
+  <script src="./app.js" defer></script>
+</body>
+</html>
