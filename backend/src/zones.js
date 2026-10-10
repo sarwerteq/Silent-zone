@@ -16,7 +16,7 @@ async function canManageArea(user, areaId) {
     `SELECT 1
      FROM admin_area_assignments aa
      JOIN admin_areas a ON a.id = aa.area_id
-     WHERE aa.admin_user_id = $1
+     WHERE aa.user_id = $1
        AND aa.area_id = $2
        AND a.is_active = TRUE`,
     [user.id, areaId]
