@@ -101,7 +101,7 @@ router.get("/", async (_req, res) => {
   try {
     const result = await query(
       `SELECT id, area_id, name, category, latitude, longitude,
-              radius_m, sound_action, schedule_enabled,
+              radius_meters AS radius_m, sound_action, schedule_enabled,
               schedule_start, schedule_end, timezone, version,
               updated_at
        FROM silent_zones
@@ -157,7 +157,7 @@ router.post(
 
       const created = await client.query(
         `INSERT INTO silent_zones
-          (area_id, name, category, latitude, longitude, radius_m,
+          (area_id, name, category, latitude, longitude,radius_meters AS radius_m,
            sound_action, schedule_enabled, schedule_start, schedule_end,
            timezone, created_by, updated_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12)
