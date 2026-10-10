@@ -15,6 +15,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.google.android.gms.location.*
+import com.google.android.gms.tasks.CancellationTokenSource
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
