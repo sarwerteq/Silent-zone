@@ -169,32 +169,44 @@ function detectZones(latitude, longitude) {
     ).join(", ");
 }
 
+
+let locationWatchId = null;
+
 document.getElementById("locationBtn").addEventListener("click", () => {
   if (!navigator.geolocation) {
-    locationStatus.textContent = "Location is not supported by this browser.";
+    locationStatus.textContent =
+      "Location is not supported by this browser.";
     return;
   }
 
-  locationStatus.textContent = "Checking location...";
-  document.getElementById("zoneDetection").textContent =
-    "Checking nearby zones...";
+  if (locationWatchId !== null) {
+    navigator.geolocation.clearWatch(locationWatchId);
+    locationWatchId = null;
+  }
 
-  navigator.geolocation.getCurrentPosition(
+  locationStatus.textContent = "Starting location tracking...";
+  document.getElementById("zoneDetection").textContent =
+    "Waiting for location...";
+
+  locationWatchId = navigator.geolocation.watchPosition(
     position => {
       const { latitude, longitude, accuracy } = position.coords;
 
       locationStatus.textContent =
-        "Location received • Accuracy about " +
+        "Location tracking active • Accuracy about " +
         Math.round(accuracy) + " metres";
 
       detectZones(latitude, longitude);
     },
     error => {
       locationStatus.textContent =
-        "Location unavailable. Please check location permission. Error: " +
-        error.message;
+        "Location error: " + error.message;
     },
-    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    {
+      enableHighAccuracy: true,
+      maximumAge: 5000,
+      timeout: 20000
+    }
   );
 });
   </script>
