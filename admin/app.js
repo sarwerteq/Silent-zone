@@ -2,8 +2,7 @@
 
 // Set this to your deployed backend URL when it is available.
 // Example: https://your-backend.example.com
-const API_BASE = "http://localhost:3000/api";
-
+const API_BASE = "https://silent-zone.onrender.com/api";
 const $ = (id) => document.getElementById(id);
 
 const loginSection = $("loginSection");
