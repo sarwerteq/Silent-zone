@@ -157,7 +157,7 @@ router.post(
 
       const created = await client.query(
         `INSERT INTO silent_zones
-          (area_id, name, category, latitude, longitude,radius_meters AS radius_m,
+          (area_id, name, category, latitude, longitude,radius_meters,
            sound_action, schedule_enabled, schedule_start, schedule_end,
            timezone, created_by, updated_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12)
@@ -182,7 +182,7 @@ router.post(
 
       await client.query(
         `INSERT INTO zone_audit_logs
-          (zone_id, actor_user_id, action, new_data)
+          (zone_id, actor_user_id, action, details)
          VALUES ($1,$2,'CREATE',$3::jsonb)`,
         [zone.id, req.user.id, JSON.stringify(zone)]
       );
@@ -275,7 +275,7 @@ router.patch(
         category: "category",
         latitude: "latitude",
         longitude: "longitude",
-        radius_m: "radius_m",
+        radius_m: "radius_meters",
         sound_action: "sound_action",
         schedule_enabled: "schedule_enabled",
         schedule_start: "schedule_start",
@@ -307,13 +307,15 @@ router.patch(
 
       await client.query(
         `INSERT INTO zone_audit_logs
-          (zone_id, actor_user_id, action, old_data, new_data)
-         VALUES ($1,$2,'UPDATE',$3::jsonb,$4::jsonb)`,
+         (zone_id, actor_user_id, action, details)
+           VALUES ($1,$2,'UPDATE',$3::jsonb)`,
         [
           oldZone.id,
           req.user.id,
-          JSON.stringify(oldZone),
-          JSON.stringify(updated.rows[0])
+          JSON.stringify({
+          old_data: oldZone,
+         new_data: updated.rows[0]
+           })
         ]
       );
 
