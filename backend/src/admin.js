@@ -121,6 +121,7 @@ router.post("/admins", async (req, res) => {
   }
 });
 
+
 router.post("/assignments", async (req, res) => {
   try {
     const { admin_user_id, area_id } = req.body || {};
@@ -136,17 +137,17 @@ router.post("/assignments", async (req, res) => {
     }
 
     const result = await query(
-      `INSERT INTO admin_area_assignments (admin_user_id, area_id, assigned_by)
-       SELECT u.id, a.id, $3
+      `INSERT INTO admin_area_assignments (user_id, area_id)
+       SELECT u.id, a.id
        FROM app_users u
        JOIN admin_areas a ON a.id = $2
        WHERE u.id = $1
          AND u.role IN ('AREA_ADMIN', 'DISTRICT_ADMIN')
          AND u.is_active = TRUE
          AND a.is_active = TRUE
-       ON CONFLICT (admin_user_id, area_id) DO NOTHING
-       RETURNING admin_user_id, area_id, assigned_by, created_at`,
-      [admin_user_id, area_id, req.user.id]
+       ON CONFLICT (user_id, area_id) DO NOTHING
+       RETURNING user_id, area_id, created_at`,
+      [admin_user_id, area_id]
     );
 
     if (result.rowCount === 0) {
