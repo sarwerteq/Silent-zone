@@ -2,7 +2,7 @@
 package com.silentzone.app
 
 import android.Manifest
-import android.app.BroadcastReceiver
+import android.content.BroadcastReceiver
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
