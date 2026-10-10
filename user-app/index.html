@@ -1,0 +1,149 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#14532d">
+  <title>Silent Zone</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: Arial, sans-serif;
+      background: #f3f7f4; color: #183326;
+    }
+    header {
+      background: #14532d; color: white;
+      padding: 24px 18px; border-radius: 0 0 22px 22px;
+    }
+    header h1 { margin: 0 0 8px; }
+    main { max-width: 600px; margin: auto; padding: 16px; }
+    .card {
+      background: white; padding: 18px; margin: 14px 0;
+      border-radius: 16px; box-shadow: 0 2px 10px #0000000b;
+    }
+    button {
+      border: 0; border-radius: 10px; padding: 13px 16px;
+      background: #166534; color: white; font-size: 16px;
+      width: 100%; margin-top: 10px;
+    }
+    .muted { color: #607267; font-size: 14px; }
+    .status { font-weight: bold; }
+    .zone {
+      border: 1px solid #dce8df; padding: 12px;
+      border-radius: 10px; margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🔕 Silent Zone</h1>
+    <div>Respect the peace around you.</div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Phone setup</h2>
+      <p class="muted">
+        Allow location access to test nearby Silent Zone detection.
+        This browser prototype will not change your phone's sound mode.
+      </p>
+      <button id="locationBtn">Check my location</button>
+      <p id="locationStatus" class="status">Location not checked</p>
+    </section>
+
+    <section class="card">
+      <h2>Active Silent Zones</h2>
+      <p id="apiStatus" class="muted">Not connected yet</p>
+      <button id="syncBtn">Sync zones</button>
+      <div id="zones">Tap Sync zones to load active zones.</div>
+    </section>
+
+    <section class="card">
+      <h2>How it works</h2>
+      <p>1. Download active zones from the server.</p>
+      <p>2. Detect when your location is inside a zone.</p>
+      <p>3. The future Android app will apply the configured sound mode, subject to your permissions.</p>
+    </section>
+  </main>
+
+  <script>
+    const API = "https://silent-zone.onrender.com/api/zones";
+    const zonesBox = document.getElementById("zones");
+    const apiStatus = document.getElementById("apiStatus");
+    const locationStatus = document.getElementById("locationStatus");
+
+    document.getElementById("syncBtn").addEventListener("click", loadZones);
+
+    async function loadZones() {
+      apiStatus.textContent = "Connecting to server...";
+      zonesBox.textContent = "Loading...";
+
+      try {
+        const response = await fetch(API);
+        if (!response.ok) throw new Error("HTTP " + response.status);
+
+        const data = await response.json();
+        if (!data.success || !Array.isArray(data.zones)) {
+          throw new Error("Unexpected API response");
+        }
+
+        apiStatus.textContent = "Connected • " + data.zones.length + " active zone(s)";
+        zonesBox.replaceChildren();
+
+        if (data.zones.length === 0) {
+          zonesBox.textContent = "No active zones found.";
+          return;
+        }
+
+        data.zones.forEach(zone => {
+          const item = document.createElement("div");
+          item.className = "zone";
+
+          const title = document.createElement("strong");
+          title.textContent = zone.name || "Unnamed zone";
+
+          const details = document.createElement("p");
+          details.className = "muted";
+          details.textContent =
+            (zone.category || "OTHER") + " • " +
+            (zone.radius_m ?? zone.radius_meters ?? "?") + " metres";
+
+          const action = document.createElement("p");
+          action.textContent = "Phone mode: " + (zone.sound_action || "Not set");
+
+          item.append(title, details, action);
+          zonesBox.appendChild(item);
+        });
+      } catch (error) {
+        apiStatus.textContent = "Could not connect: " + error.message;
+        zonesBox.textContent =
+          "Check your internet connection and API availability, then retry.";
+      }
+    }
+
+    document.getElementById("locationBtn").addEventListener("click", () => {
+      if (!navigator.geolocation) {
+        locationStatus.textContent = "This browser does not support location.";
+        return;
+      }
+
+      locationStatus.textContent = "Requesting location permission...";
+
+      navigator.geolocation.getCurrentPosition(
+        position => {
+          locationStatus.textContent =
+            "Location received • Accuracy about " +
+            Math.round(position.coords.accuracy) + " metres";
+        },
+        error => {
+          locationStatus.textContent =
+            "Location unavailable. Check permission and browser settings. Code: " +
+            error.code;
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    });
+  </script>
+</body>
+</html>
