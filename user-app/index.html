@@ -96,7 +96,8 @@
           zonesBox.textContent = "No active zones found.";
           return;
         }
-
+        
+        activeZones = data.zones;
         data.zones.forEach(zone => {
           const item = document.createElement("div");
           item.className = "zone";
@@ -123,28 +124,79 @@
       }
     }
 
-    document.getElementById("locationBtn").addEventListener("click", () => {
-      if (!navigator.geolocation) {
-        locationStatus.textContent = "This browser does not support location.";
-        return;
-      }
+    
+let activeZones = [];
 
-      locationStatus.textContent = "Requesting location permission...";
+function distanceInMeters(lat1, lon1, lat2, lon2) {
+  const toRad = value => value * Math.PI / 180;
+  const earthRadius = 6371000;
 
-      navigator.geolocation.getCurrentPosition(
-        position => {
-          locationStatus.textContent =
-            "Location received • Accuracy about " +
-            Math.round(position.coords.accuracy) + " metres";
-        },
-        error => {
-          locationStatus.textContent =
-            "Location unavailable. Check permission and browser settings. Code: " +
-            error.code;
-        },
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-      );
-    });
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) *
+    Math.cos(toRad(lat2)) *
+    Math.sin(dLon / 2) ** 2;
+
+  return earthRadius * 2 *
+    Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function detectZones(latitude, longitude) {
+  const result = document.getElementById("zoneDetection");
+  const nearby = activeZones.filter(zone => {
+    const distance = distanceInMeters(
+      latitude,
+      longitude,
+      Number(zone.latitude),
+      Number(zone.longitude)
+    );
+
+    const radius = Number(zone.radius_m ?? zone.radius_meters);
+    return Number.isFinite(radius) && distance <= radius;
+  });
+
+  if (nearby.length === 0) {
+    result.textContent = "You are outside all active Silent Zones.";
+    return;
+  }
+
+  result.textContent = "Inside zone(s): " +
+    nearby.map(zone =>
+      `${zone.name} (${zone.sound_action})`
+    ).join(", ");
+}
+
+document.getElementById("locationBtn").addEventListener("click", () => {
+  if (!navigator.geolocation) {
+    locationStatus.textContent = "Location is not supported by this browser.";
+    return;
+  }
+
+  locationStatus.textContent = "Checking location...";
+  document.getElementById("zoneDetection").textContent =
+    "Checking nearby zones...";
+
+  navigator.geolocation.getCurrentPosition(
+    position => {
+      const { latitude, longitude, accuracy } = position.coords;
+
+      locationStatus.textContent =
+        "Location received • Accuracy about " +
+        Math.round(accuracy) + " metres";
+
+      detectZones(latitude, longitude);
+    },
+    error => {
+      locationStatus.textContent =
+        "Location unavailable. Please check location permission. Error: " +
+        error.message;
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+  );
+});
   </script>
 </body>
 </html>
