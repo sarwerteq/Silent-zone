@@ -569,87 +569,80 @@ class MainActivity : Activity() {
 
     private fun checkLocation() {
 
-        if (!hasForegroundLocation()) {
+    if (!hasForegroundLocation()) {
 
-            requestPermissions(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                ),
-                locationPermissionCode
-            )
+        requestPermissions(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ),
+            locationPermissionCode
+        )
 
-            return
-        }
+        return
+    }
 
-        status.text =
-            "Getting precise location..."
+    status.text = "Getting precise location..."
 
-        val client =
-            LocationServices
-                .getFusedLocationProviderClient(this)
+    val client =
+        LocationServices
+            .getFusedLocationProviderClient(this)
 
-        try {
+    try {
 
-            client.getCurrentLocation(
-                Priority.PRIORITY_HIGH_ACCURACY,
-                CancellationTokenSource().token
-            ).addOnSuccessListener { location ->
+        client.getCurrentLocation(
+            Priority.PRIORITY_HIGH_ACCURACY,
+            CancellationTokenSource().token
+        ).addOnSuccessListener { location ->
 
-                if (location == null) {
-
-                    status.text =
-                        "Location unavailable"
-
-                    locationInfo.text =
-                        "GPS location could not be determined."
-
-                    zoneProtection.text =
-                        "Unable to determine zone status."
-
-                    return@addOnSuccessListener
-                }
-
-                val accuracy =
-                    location.accuracy
-
-                locationInfo.text =
-                    "Latitude: %.6f\n" +
-                    "Longitude: %.6f\n" +
-                    "Accuracy: %.0f metres\n" +
-                    "Phone mode: %s"
-                        .format(
-                            Locale.US,
-                            location.latitude,
-                            location.longitude,
-                            accuracy,
-                            getCurrentPhoneMode()
-                        )
+            if (location == null) {
 
                 status.text =
-                    "Location Connected"
-
-                updateZoneProtection(
-                    location
-                )
-
-            }.addOnFailureListener {
-
-                status.text =
-                    "Location Failed"
+                    "Location unavailable"
 
                 locationInfo.text =
-                    "Please check GPS and location permission."
+                    "GPS location could not be determined."
 
                 zoneProtection.text =
                     "Unable to determine zone status."
+
+                return@addOnSuccessListener
             }
 
-        } catch (e: SecurityException) {
+            val accuracy =
+                location.accuracy
+
+            locationInfo.text = String.format(
+                Locale.US,
+                "Latitude: %.6f\nLongitude: %.6f\nAccuracy: %.0f metres\nPhone mode: %s",
+                location.latitude,
+                location.longitude,
+                accuracy,
+                getCurrentPhoneMode()
+            )
 
             status.text =
-                "Location Permission Required"
+                "Location Connected"
+
+            updateZoneProtection(location)
+
+        }.addOnFailureListener {
+
+            status.text =
+                "Location Failed"
+
+            locationInfo.text =
+                "Please check GPS and location permission."
+
+            zoneProtection.text =
+                "Unable to determine zone status."
         }
+
+    } catch (e: SecurityException) {
+
+        status.text =
+            "Location Permission Required"
+    }
     }
 
     // --------------------------------
@@ -657,170 +650,197 @@ class MainActivity : Activity() {
     // --------------------------------
 
     private fun updateZoneProtection(
-        location: Location
-    ) {
+    location: Location
+) {
 
-        if (!::zoneList.isInitialized) {
-            return
-        }
+    if (!::zoneList.isInitialized) {
+        return
+    }
 
-        val zones =
-            getCurrentZoneData()
+    val zones =
+        getCurrentZoneData()
 
-        if (zones.isEmpty()) {
+    if (zones.isEmpty()) {
 
-            zoneProtection.text =
-                "No active Silent Zone available."
+        zoneProtection.text =
+            "No active Silent Zone available."
 
-            status.text =
-                "No Active Zones"
+        status.text =
+            "No Active Zones"
 
-            return
-        }
+        return
+    }
 
-        var nearestZone: JSONObject? =
-            null
+    var nearestZone: JSONObject? = null
 
-        var nearestDistance =
-            Double.MAX_VALUE
+    var nearestDistance =
+        Double.MAX_VALUE
 
-        for (zone in zones) {
+    for (zone in zones) {
 
-            val latitude =
-                zone.optDouble(
-                    "latitude",
-                    Double.NaN
-                )
-
-            val longitude =
-                zone.optDouble(
-                    "longitude",
-                    Double.NaN
-                )
-
-            if (
-                !latitude.isFinite() ||
-                !longitude.isFinite()
-            ) {
-                continue
-            }
-
-            val result =
-                FloatArray(1)
-
-            Location.distanceBetween(
-                location.latitude,
-                location.longitude,
-                latitude,
-                longitude,
-                result
-            )
-
-            val distance =
-                result[0].toDouble()
-
-            if (
-                distance < nearestDistance
-            ) {
-
-                nearestDistance =
-                    distance
-
-                nearestZone =
-                    zone
-            }
-        }
-
-        val zone =
-            nearestZone
-
-        if (zone == null) {
-
-            zoneProtection.text =
-                "Unable to calculate zone distance."
-
-            return
-        }
-
-        val radius =
+        val latitude =
             zone.optDouble(
-                "radius_m",
-                zone.optDouble(
-                    "radius_meters",
-                    0.0
-                )
+                "latitude",
+                Double.NaN
             )
 
-        val name =
-            zone.optString(
-                "name",
-                "Silent Zone"
+        val longitude =
+            zone.optDouble(
+                "longitude",
+                Double.NaN
             )
 
-        val action =
-            zone.optString(
-                "sound_action",
-                "SILENT"
-            ).uppercase()
+        if (
+            !latitude.isFinite() ||
+            !longitude.isFinite()
+        ) {
+            continue
+        }
 
-        val inside =
-            nearestDistance <= radius
+        val result =
+            FloatArray(1)
 
-        val distanceText =
-            if (nearestDistance < 1000) {
-                "%.0f m".format(
-                    Locale.US,
-                    nearestDistance
-                )
-            } else {
-                "%.2f km".format(
-                    Locale.US,
-                    nearestDistance / 1000.0
-                )
-            }
+        Location.distanceBetween(
+            location.latitude,
+            location.longitude,
+            latitude,
+            longitude,
+            result
+        )
 
-        val currentMode =
-            getCurrentPhoneMode()
+        val distance =
+            result[0].toDouble()
 
-        if (inside) {
+        if (
+            distance < nearestDistance
+        ) {
 
-            status.text =
-                "INSIDE SILENT ZONE"
+            nearestDistance =
+                distance
 
-            status.setTextColor(
-                Color.rgb(20, 130, 75)
+            nearestZone =
+                zone
+        }
+    }
+
+    val zone =
+        nearestZone
+
+    if (zone == null) {
+
+        zoneProtection.text =
+            "Unable to calculate zone distance."
+
+        return
+    }
+
+    val radius =
+        zone.optDouble(
+            "radius_m",
+            zone.optDouble(
+                "radius_meters",
+                0.0
             )
+        )
 
-            zoneProtection.text =
-                "● $name\n\n" +
-                "Distance: $distanceText / " +
-                "%.0f m radius\n".format(
-                    Locale.US,
-                    radius
-                ) +
-                "Required mode: $action\n" +
-                "Current phone mode: $currentMode"
+    val name =
+        zone.optString(
+            "name",
+            "Silent Zone"
+        )
+
+    val action =
+        zone.optString(
+            "sound_action",
+            "SILENT"
+        ).uppercase()
+
+    val inside =
+        nearestDistance <= radius
+
+    val distanceText =
+        if (nearestDistance < 1000) {
+
+            String.format(
+                Locale.US,
+                "%.0f m",
+                nearestDistance
+            )
 
         } else {
 
-            status.text =
-                "OUTSIDE SILENT ZONE"
-
-            status.setTextColor(
-                Color.rgb(70, 80, 95)
+            String.format(
+                Locale.US,
+                "%.2f km",
+                nearestDistance / 1000.0
             )
-
-            zoneProtection.text =
-                "○ Nearest zone: $name\n\n" +
-                "Distance: $distanceText / " +
-                "%.0f m radius\n".format(
-                    Locale.US,
-                    radius
-                ) +
-                "Zone action: $action\n" +
-                "Current phone mode: $currentMode"
         }
+
+    /*
+     * AUTOMATIC SOUND CONTROL
+     */
+
+    if (inside) {
+
+        SoundModeManager.apply(
+            this,
+            action
+        )
+
+    } else {
+
+        SoundModeManager.restore(
+            this
+        )
     }
+
+    val currentMode =
+        getCurrentPhoneMode()
+
+    if (inside) {
+
+        status.text =
+            "INSIDE SILENT ZONE"
+
+        status.setTextColor(
+            Color.rgb(20, 130, 75)
+        )
+
+        zoneProtection.text =
+            "● $name\n\n" +
+            "Distance: $distanceText / " +
+            String.format(
+                Locale.US,
+                "%.0f m radius",
+                radius
+            ) +
+            "\nRequired mode: $action\n" +
+            "Current phone mode: " +
+            getCurrentPhoneMode()
+
+    } else {
+
+        status.text =
+            "OUTSIDE SILENT ZONE"
+
+        status.setTextColor(
+            Color.rgb(70, 80, 95)
+        )
+
+        zoneProtection.text =
+            "○ Nearest zone: $name\n\n" +
+            "Distance: $distanceText / " +
+            String.format(
+                Locale.US,
+                "%.0f m radius",
+                radius
+            ) +
+            "\nZone action: $action\n" +
+            "Current phone mode: " +
+            getCurrentPhoneMode()
+    }
+    }
+        
     // --------------------------------
     // STORE / READ ZONE DATA
     // --------------------------------
@@ -1104,20 +1124,20 @@ class MainActivity : Activity() {
 
         box.addView(categoryText)
 
-        val details =
-            text(
-                "Radius: %.0f metres\n" +
-                    "Action: %s\n" +
-                    "Status: Active".format(
-                        Locale.US,
-                        radius,
-                        action.uppercase()
-                    ),
-                14f,
-                false,
-                Color.rgb(70, 80, 95)
-            )
+    val detailsText = String.format(
+    Locale.US,
+    "Radius: %.0f metres\nAction: %s\nStatus: Active",
+    radius,
+    action.uppercase()
+    )
 
+        val details =
+        text(
+        detailsText,
+        14f,
+        false,
+        Color.rgb(70, 80, 95)
+    )
         details.setPadding(
             0,
             dp(10),
