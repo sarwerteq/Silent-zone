@@ -71,14 +71,11 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
 
-    val testText = TextView(this)
+    geofencingClient =
+        LocationServices.getGeofencingClient(this)
 
-    testText.text = "Silent Zone started successfully"
-    testText.textSize = 24f
-    testText.setTextColor(Color.BLACK)
-    testText.setPadding(40, 40, 40, 40)
-
-    setContentView(testText)
+    buildPremiumUi()
+    loadZones()
     }
 
     private fun dp(value: Int): Int {
