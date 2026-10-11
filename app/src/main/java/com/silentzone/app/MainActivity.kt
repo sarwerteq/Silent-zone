@@ -67,13 +67,16 @@ class MainActivity : Activity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    super.onCreate(savedInstanceState)
 
-        geofencingClient =
-            LocationServices.getGeofencingClient(this)
+    geofencingClient =
+        LocationServices.getGeofencingClient(this)
 
-        buildPremiumUi()
-        loadZones()
+    status = TextView(this)
+
+    status.text = "Silent Zone started successfully"
+
+    setContentView(status)
     }
 
     private fun dp(value: Int): Int {
