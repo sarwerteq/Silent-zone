@@ -20,7 +20,8 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import com.google.android.gms.location.CancellationTokenSource
+import android.location.Location
+import com.google.android.gms.tasks.CancellationTokenSource
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingClient
 import com.google.android.gms.location.GeofencingRequest
@@ -821,7 +822,6 @@ class MainActivity : Activity() {
                 "Current phone mode: $currentMode"
         }
     }
-
     // --------------------------------
     // STORE / READ ZONE DATA
     // --------------------------------
@@ -829,9 +829,7 @@ class MainActivity : Activity() {
     private val currentZones =
         mutableListOf<JSONObject>()
 
-    private fun getCurrentZoneData():
-        List<JSONObject> {
-
+    private fun getCurrentZoneData(): List<JSONObject> {
         return currentZones.toList()
     }
 
@@ -841,8 +839,7 @@ class MainActivity : Activity() {
 
     private fun loadZones() {
 
-        status.text =
-            "Syncing zones..."
+        status.text = "Syncing zones..."
 
         connectionInfo.text =
             "Connecting to Silent Zone server..."
@@ -853,24 +850,16 @@ class MainActivity : Activity() {
 
                 val connection =
                     URL(apiUrl)
-                        .openConnection()
-                            as HttpURLConnection
+                        .openConnection() as HttpURLConnection
 
-                connection.requestMethod =
-                    "GET"
-
-                connection.connectTimeout =
-                    15000
-
-                connection.readTimeout =
-                    15000
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 15000
+                connection.readTimeout = 15000
 
                 val response =
                     connection.inputStream
                         .bufferedReader()
-                        .use {
-                            it.readText()
-                        }
+                        .use { it.readText() }
 
                 connection.disconnect()
 
@@ -878,5 +867,365 @@ class MainActivity : Activity() {
                     JSONObject(response)
 
                 val zones =
-                    json.optJSONArray(
-  
+                    json.optJSONArray("zones")
+                        ?: throw Exception(
+                            "Zones missing in API response"
+                        )
+
+                val geofences =
+                    mutableListOf<Geofence>()
+
+                val zoneData =
+                    mutableListOf<JSONObject>()
+
+                var count = 0
+
+                for (i in 0 until zones.length()) {
+
+                    val zone =
+                        zones.getJSONObject(i)
+
+                    if (
+                        !zone.optBoolean(
+                            "is_active",
+                            true
+                        )
+                    ) {
+                        continue
+                    }
+
+                    val latitude =
+                        zone.optDouble(
+                            "latitude",
+                            Double.NaN
+                        )
+
+                    val longitude =
+                        zone.optDouble(
+                            "longitude",
+                            Double.NaN
+                        )
+
+                    val radius =
+                        zone.optDouble(
+                            "radius_m",
+                            zone.optDouble(
+                                "radius_meters",
+                                0.0
+                            )
+                        )
+
+                    if (
+                        !latitude.isFinite() ||
+                        !longitude.isFinite() ||
+                        radius < 10 ||
+                        radius > 500 ||
+                        latitude !in -90.0..90.0 ||
+                        longitude !in -180.0..180.0
+                    ) {
+                        continue
+                    }
+
+                    val id =
+                        zone.optString(
+                            "id",
+                            "zone-$i"
+                        )
+
+                    geofences.add(
+                        Geofence.Builder()
+                            .setRequestId(id)
+                            .setCircularRegion(
+                                latitude,
+                                longitude,
+                                radius.toFloat()
+                            )
+                            .setExpirationDuration(
+                                Geofence.NEVER_EXPIRE
+                            )
+                            .setTransitionTypes(
+                                Geofence.GEOFENCE_TRANSITION_ENTER or
+                                    Geofence.GEOFENCE_TRANSITION_EXIT
+                            )
+                            .setNotificationResponsiveness(
+                                60000
+                            )
+                            .build()
+                    )
+
+                    zoneData.add(zone)
+
+                    count++
+                }
+
+                runOnUiThread {
+
+                    currentZones.clear()
+                    currentZones.addAll(zoneData)
+
+                    connectionInfo.text =
+                        "● Connected\n$count active zone(s)"
+
+                    zoneList.removeAllViews()
+
+                    if (count == 0) {
+
+                        zoneList.addView(
+                            text(
+                                "No active zones available.",
+                                15f
+                            )
+                        )
+
+                        zoneProtection.text =
+                            "No active Silent Zone available."
+
+                    } else {
+
+                        zoneData.forEach { zone ->
+
+                            addZoneCard(zone)
+                        }
+                    }
+
+                    registerGeofences(
+                        geofences.take(100)
+                    )
+
+                    if (hasForegroundLocation()) {
+                        checkLocation()
+                    }
+                }
+
+            } catch (e: Exception) {
+
+                runOnUiThread {
+
+                    connectionInfo.text =
+                        "● Connection failed"
+
+                    status.text =
+                        "Sync Failed"
+
+                    zoneList.removeAllViews()
+
+                    zoneList.addView(
+                        text(
+                            e.localizedMessage
+                                ?: "Unable to load zones.",
+                            14f
+                        )
+                    )
+
+                    zoneProtection.text =
+                        "Unable to load zone information."
+                }
+            }
+        }
+    }
+
+    // --------------------------------
+    // ZONE CARD
+    // --------------------------------
+
+    private fun addZoneCard(
+        zone: JSONObject
+    ) {
+
+        val box =
+            LinearLayout(this).apply {
+
+                orientation =
+                    LinearLayout.VERTICAL
+
+                setPadding(
+                    dp(16),
+                    dp(16),
+                    dp(16),
+                    dp(16)
+                )
+
+                background =
+                    roundedBackground(
+                        Color.rgb(247, 249, 252),
+                        15f
+                    )
+            }
+
+        val name =
+            zone.optString(
+                "name",
+                "Silent Zone"
+            )
+
+        val category =
+            zone.optString(
+                "category",
+                "ZONE"
+            )
+
+        val action =
+            zone.optString(
+                "sound_action",
+                "SILENT"
+            )
+
+        val radius =
+            zone.optDouble(
+                "radius_m",
+                zone.optDouble(
+                    "radius_meters",
+                    0.0
+                )
+            )
+
+        box.addView(
+            text(
+                name,
+                19f,
+                true,
+                Color.rgb(25, 35, 50)
+            )
+        )
+
+        val categoryText =
+            text(
+                category.uppercase(),
+                11f,
+                true,
+                Color.rgb(80, 105, 135)
+            )
+
+        categoryText.setPadding(
+            0,
+            dp(3),
+            0,
+            0
+        )
+
+        box.addView(categoryText)
+
+        val details =
+            text(
+                "Radius: %.0f metres\n" +
+                    "Action: %s\n" +
+                    "Status: Active".format(
+                        Locale.US,
+                        radius,
+                        action.uppercase()
+                    ),
+                14f,
+                false,
+                Color.rgb(70, 80, 95)
+            )
+
+        details.setPadding(
+            0,
+            dp(10),
+            0,
+            0
+        )
+
+        box.addView(details)
+
+        zoneList.addView(box)
+
+        val spacer =
+            View(this)
+
+        spacer.layoutParams =
+            LinearLayout.LayoutParams(
+                1,
+                dp(8)
+            )
+
+        zoneList.addView(spacer)
+    }
+
+    // --------------------------------
+    // GEOFENCE
+    // --------------------------------
+
+    private fun registerGeofences(
+        geofences: List<Geofence>
+    ) {
+
+        if (!hasForegroundLocation()) {
+
+            status.text =
+                "Location Permission Required"
+
+            return
+        }
+
+        if (!hasBackgroundLocation()) {
+
+            status.text =
+                "Enable Background Location"
+
+            return
+        }
+
+        if (geofences.isEmpty()) {
+
+            geofencingClient
+                .removeGeofences(
+                    geofencePendingIntent
+                )
+
+            status.text =
+                "No Active Zones"
+
+            return
+        }
+
+        val request =
+            GeofencingRequest.Builder()
+                .setInitialTrigger(
+                    GeofencingRequest.INITIAL_TRIGGER_ENTER
+                )
+                .addGeofences(
+                    geofences
+                )
+                .build()
+
+        geofencingClient
+            .removeGeofences(
+                geofencePendingIntent
+            )
+            .addOnCompleteListener {
+
+                try {
+
+                    geofencingClient
+                        .addGeofences(
+                            request,
+                            geofencePendingIntent
+                        )
+                        .addOnSuccessListener {
+
+                            if (
+                                currentZones.isNotEmpty()
+                            ) {
+                                checkLocation()
+                            }
+                        }
+                        .addOnFailureListener { error ->
+
+                            status.text =
+                                "Geofence Setup Failed: ${
+                                    error.message
+                                        ?: "Unknown error"
+                                }"
+                        }
+
+                } catch (
+                    e: SecurityException
+                ) {
+
+                    status.text =
+                        "Location Permission Required"
+                }
+            }
+    }
+}
