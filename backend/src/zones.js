@@ -58,9 +58,9 @@ function validateZone(body, partial = false) {
 
   if (!partial || body.radius_m !== undefined) {
     if (!Number.isInteger(body.radius_m) ||
-        body.radius_m < 50 ||
-        body.radius_m > 1000) {
-      errors.push("radius_m must be between 50 and 1000");
+        body.radius_m < 10 ||
+        body.radius_m > 500) {
+      errors.push("radius_m must be between 10 and 500");
     }
   }
 
