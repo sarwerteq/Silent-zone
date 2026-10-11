@@ -1,4 +1,3 @@
-
 package com.silentzone.app
 
 import android.Manifest
@@ -6,13 +5,17 @@ import android.app.Activity
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
+import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import com.google.android.gms.location.*
 import com.google.android.gms.tasks.CancellationTokenSource
@@ -24,7 +27,9 @@ import kotlin.concurrent.thread
 class MainActivity : Activity() {
 
     private lateinit var status: TextView
-    private lateinit var zoneList: TextView
+    private lateinit var zoneList: LinearLayout
+    private lateinit var locationInfo: TextView
+    private lateinit var connectionInfo: TextView
     private lateinit var geofencingClient: GeofencingClient
 
     private val apiUrl =
@@ -58,52 +63,260 @@ class MainActivity : Activity() {
         geofencingClient =
             LocationServices.getGeofencingClient(this)
 
-        val layout = LinearLayout(this).apply {
+        buildPremiumUi()
+        loadZones()
+    }
+
+    private fun dp(value: Int): Int {
+        return (value * resources.displayMetrics.density).toInt()
+    }
+
+    private fun text(
+        value: String,
+        size: Float,
+        bold: Boolean = false
+    ): TextView {
+        return TextView(this).apply {
+            text = value
+            textSize = size
+            setTextColor(Color.rgb(30, 35, 45))
+            if (bold) {
+                setTypeface(null, Typeface.BOLD)
+            }
+        }
+    }
+
+    private fun card(): LinearLayout {
+        return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(28, 40, 28, 24)
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+            setBackgroundColor(Color.WHITE)
+
+            elevation = dp(4).toFloat()
+
+            val params = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+
+            params.setMargins(
+                0,
+                dp(8),
+                0,
+                dp(8)
+            )
+
+            layoutParams = params
+        }
+    }
+
+    private fun buildPremiumUi() {
+
+        val scroll = ScrollView(this)
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(
+                dp(20),
+                dp(28),
+                dp(20),
+                dp(30)
+            )
+            setBackgroundColor(Color.rgb(245, 247, 250))
         }
 
-        val heading = TextView(this).apply {
-            text = "Silent Zone"
-            textSize = 28f
+        // Header
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
         }
 
-        status = TextView(this).apply {
-            text = "Ready"
-            textSize = 16f
-            setPadding(0, 20, 0, 20)
+        val title = text(
+            "Silent Zone",
+            30f,
+            true
+        )
+
+        val subtitle = text(
+            "Smart location-based sound control",
+            15f
+        )
+
+        header.addView(title)
+        header.addView(subtitle)
+
+        root.addView(header)
+
+        // Main status card
+        val statusCard = card()
+
+        val statusTitle = text(
+            "ZONE PROTECTION",
+            13f,
+            true
+        )
+
+        status = text(
+            "Checking connection...",
+            22f,
+            true
+        )
+
+        val statusDescription = text(
+            "Automatic sound control based on your active zones.",
+            14f
+        )
+
+        statusDescription.setPadding(
+            0,
+            dp(6),
+            0,
+            0
+        )
+
+        statusCard.addView(statusTitle)
+        statusCard.addView(status)
+        statusCard.addView(statusDescription)
+
+        root.addView(statusCard)
+
+        // Connection card
+        val connectionCard = card()
+
+        connectionCard.addView(
+            text(
+                "CONNECTION",
+                13f,
+                true
+            )
+        )
+
+        connectionInfo = text(
+            "Connecting to Silent Zone server...",
+            16f,
+            false
+        )
+
+        connectionInfo.setPadding(
+            0,
+            dp(8),
+            0,
+            0
+        )
+
+        connectionCard.addView(connectionInfo)
+
+        root.addView(connectionCard)
+
+        // Location card
+        val locationCard = card()
+
+        locationCard.addView(
+            text(
+                "CURRENT LOCATION",
+                13f,
+                true
+            )
+        )
+
+        locationInfo = text(
+            "Location not checked yet",
+            16f
+        )
+
+        locationInfo.setPadding(
+            0,
+            dp(8),
+            0,
+            0
+        )
+
+        locationCard.addView(locationInfo)
+
+        val locationButton = Button(this).apply {
+            text = "Refresh Location"
+            setOnClickListener {
+                checkLocation()
+            }
         }
+
+        locationCard.addView(locationButton)
+
+        root.addView(locationCard)
+
+        // Actions
+        val actionsCard = card()
+
+        actionsCard.addView(
+            text(
+                "CONTROLS",
+                13f,
+                true
+            )
+        )
 
         val syncButton = Button(this).apply {
             text = "Sync Zones"
-            setOnClickListener { loadZones() }
+            setOnClickListener {
+                loadZones()
+            }
         }
+
+        actionsCard.addView(syncButton)
 
         val permissionButton = Button(this).apply {
-            text = "Enable Background Location"
-            setOnClickListener { openLocationSettings() }
+            text = "Background Location Settings"
+            setOnClickListener {
+                openLocationSettings()
+            }
         }
 
-        val locationButton = Button(this).apply {
-            text = "Check My Location"
-            setOnClickListener { checkLocation() }
+        actionsCard.addView(permissionButton)
+
+        root.addView(actionsCard)
+
+        // Zones section
+        val zonesCard = card()
+
+        zonesCard.addView(
+            text(
+                "ACTIVE ZONES",
+                13f,
+                true
+            )
+        )
+
+        zoneList = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(
+                0,
+                dp(10),
+                0,
+                0
+            )
         }
 
-        zoneList = TextView(this).apply {
-            textSize = 16f
-            setPadding(0, 20, 0, 0)
-        }
+        zonesCard.addView(zoneList)
 
-        layout.addView(heading)
-        layout.addView(status)
-        layout.addView(syncButton)
-        layout.addView(permissionButton)
-        layout.addView(locationButton)
-        layout.addView(zoneList)
+        root.addView(zonesCard)
 
-        setContentView(layout)
-        loadZones()
+        val footer = text(
+            "Silent Zone • Community safety through quieter spaces",
+            12f
+        )
+
+        footer.gravity = Gravity.CENTER
+        footer.setPadding(
+            0,
+            dp(18),
+            0,
+            0
+        )
+
+        root.addView(footer)
+
+        scroll.addView(root)
+
+        setContentView(scroll)
     }
 
     private fun hasForegroundLocation(): Boolean {
@@ -120,6 +333,7 @@ class MainActivity : Activity() {
     }
 
     private fun openLocationSettings() {
+
         if (!hasForegroundLocation()) {
             requestPermissions(
                 arrayOf(
@@ -132,8 +346,9 @@ class MainActivity : Activity() {
         }
 
         if (!hasBackgroundLocation()) {
+
             status.text =
-                "Settings mein Location access ko Allow all the time karo"
+                "Background Location Required"
 
             val intent = Intent(
                 Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
@@ -141,14 +356,18 @@ class MainActivity : Activity() {
             )
 
             startActivity(intent)
+
         } else {
+
             status.text =
-                "Background location already allowed. Tap Sync Zones."
+                "Background Location Enabled"
         }
     }
 
     private fun checkLocation() {
+
         if (!hasForegroundLocation()) {
+
             requestPermissions(
                 arrayOf(
                     Manifest.permission.ACCESS_FINE_LOCATION,
@@ -156,84 +375,158 @@ class MainActivity : Activity() {
                 ),
                 locationPermissionCode
             )
+
             return
         }
 
-        status.text = "Checking location..."
+        status.text =
+            "Getting precise location..."
 
         val client =
             LocationServices.getFusedLocationProviderClient(this)
 
         try {
+
             client.getCurrentLocation(
                 Priority.PRIORITY_HIGH_ACCURACY,
                 CancellationTokenSource().token
             ).addOnSuccessListener { location ->
-                status.text = if (location == null) {
-                    "Location unavailable. Try again."
-                } else {
-                    "Location received • Accuracy %.0f m"
-                        .format(location.accuracy)
+
+                if (location == null) {
+
+                    status.text =
+                        "Location unavailable"
+
+                    locationInfo.text =
+                        "GPS location could not be determined."
+
+                    return@addOnSuccessListener
                 }
+
+                val accuracy =
+                    location.accuracy
+
+                locationInfo.text =
+                    "Latitude: %.6f\nLongitude: %.6f\nAccuracy: %.0f metres"
+                        .format(
+                            location.latitude,
+                            location.longitude,
+                            accuracy
+                        )
+
+                status.text =
+                    "Location Connected"
+
             }.addOnFailureListener {
-                status.text = "Location failed. Check phone settings."
+
+                status.text =
+                    "Location Failed"
+
+                locationInfo.text =
+                    "Please check GPS and location permission."
             }
+
         } catch (e: SecurityException) {
-            status.text = "Please allow location permission."
+
+            status.text =
+                "Location Permission Required"
         }
     }
 
     private fun loadZones() {
-        status.text = "Syncing zones..."
+
+        status.text =
+            "Syncing zones..."
+
+        connectionInfo.text =
+            "Connecting to Silent Zone server..."
 
         thread {
+
             try {
+
                 val connection =
-                    URL(apiUrl).openConnection() as HttpURLConnection
+                    URL(apiUrl).openConnection()
+                            as HttpURLConnection
 
                 connection.requestMethod = "GET"
                 connection.connectTimeout = 15000
                 connection.readTimeout = 15000
 
-                val response = connection.inputStream
-                    .bufferedReader().use { it.readText() }
+                val response =
+                    connection.inputStream
+                        .bufferedReader()
+                        .use { it.readText() }
 
                 connection.disconnect()
 
-                val json = JSONObject(response)
-                val zones = json.optJSONArray("zones")
-                    ?: throw Exception("Zones missing in API response")
+                val json =
+                    JSONObject(response)
 
-                val geofences = mutableListOf<Geofence>()
-                val display = StringBuilder()
+                val zones =
+                    json.optJSONArray("zones")
+                        ?: throw Exception(
+                            "Zones missing in API response"
+                        )
+
+                val geofences =
+                    mutableListOf<Geofence>()
+
+                val zoneData =
+                    mutableListOf<JSONObject>()
+
                 var count = 0
 
                 for (i in 0 until zones.length()) {
-                    val zone = zones.getJSONObject(i)
 
-                    if (!zone.optBoolean("is_active", true)) {
+                    val zone =
+                        zones.getJSONObject(i)
+
+                    if (!zone.optBoolean(
+                            "is_active",
+                            true
+                        )
+                    ) {
                         continue
                     }
 
-                    val latitude = zone.optDouble("latitude", Double.NaN)
-                    val longitude = zone.optDouble("longitude", Double.NaN)
-                    val radius = zone.optDouble(
-                        "radius_m",
-                        zone.optDouble("radius_meters", 0.0)
-                    )
+                    val latitude =
+                        zone.optDouble(
+                            "latitude",
+                            Double.NaN
+                        )
 
-                    if (!latitude.isFinite() ||
+                    val longitude =
+                        zone.optDouble(
+                            "longitude",
+                            Double.NaN
+                        )
+
+                    val radius =
+                        zone.optDouble(
+                            "radius_m",
+                            zone.optDouble(
+                                "radius_meters",
+                                0.0
+                            )
+                        )
+
+                    if (
+                        !latitude.isFinite() ||
                         !longitude.isFinite() ||
-                        radius < 50 ||
+                        radius < 10 ||
+                        radius > 500 ||
                         latitude !in -90.0..90.0 ||
                         longitude !in -180.0..180.0
                     ) {
                         continue
                     }
 
-                    val id = zone.optString("id", "zone-$i")
-                    val name = zone.optString("name", "Silent Zone")
-                    val action = zone.optString("sound_action", "SILENT")
+                    val id =
+                        zone.optString(
+                            "id",
+                            "zone-$i"
+                        )
 
                     geofences.add(
                         Geofence.Builder()
@@ -250,87 +543,235 @@ class MainActivity : Activity() {
                                 Geofence.GEOFENCE_TRANSITION_ENTER or
                                     Geofence.GEOFENCE_TRANSITION_EXIT
                             )
-                            .setNotificationResponsiveness(60000)
+                            .setNotificationResponsiveness(
+                                60000
+                            )
                             .build()
                     )
 
+                    zoneData.add(zone)
                     count++
-                    display.append("\n$count. ")
-                        .append(name)
-                        .append("\n   Action: ")
-                        .append(action)
-                        .append("\n")
                 }
 
                 runOnUiThread {
-                    zoneList.text = if (count == 0) {
-                        "No valid active zones found."
+
+                    connectionInfo.text =
+                        "● Connected\n${
+                            count
+                        } active zone(s)"
+
+                    zoneList.removeAllViews()
+
+                    if (count == 0) {
+
+                        zoneList.addView(
+                            text(
+                                "No active zones available.",
+                                15f
+                            )
+                        )
+
                     } else {
-                        display.toString()
+
+                        zoneData.forEach { zone ->
+
+                            addZoneCard(zone)
+                        }
                     }
 
-                    if (count > 100) {
-                        status.text =
-                            "More than 100 zones. Only the first 100 can be monitored."
-                    }
-
-                    registerGeofences(geofences.take(100))
+                    registerGeofences(
+                        geofences.take(100)
+                    )
                 }
+
             } catch (e: Exception) {
+
                 runOnUiThread {
+
+                    connectionInfo.text =
+                        "● Connection failed"
+
                     status.text =
-                        "Sync failed: ${e.localizedMessage ?: "Try again"}"
+                        "Sync Failed"
+
+                    zoneList.removeAllViews()
+
+                    zoneList.addView(
+                        text(
+                            e.localizedMessage
+                                ?: "Unable to load zones.",
+                            14f
+                        )
+                    )
                 }
             }
         }
     }
 
-    private fun registerGeofences(geofences: List<Geofence>) {
+    private fun addZoneCard(zone: JSONObject) {
+
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(
+                dp(14),
+                dp(14),
+                dp(14),
+                dp(14)
+            )
+            setBackgroundColor(
+                Color.rgb(248, 249, 252)
+            )
+        }
+
+        val name =
+            zone.optString(
+                "name",
+                "Silent Zone"
+            )
+
+        val category =
+            zone.optString(
+                "category",
+                "ZONE"
+            )
+
+        val action =
+            zone.optString(
+                "sound_action",
+                "SILENT"
+            )
+
+        val radius =
+            zone.optDouble(
+                "radius_m",
+                zone.optDouble(
+                    "radius_meters",
+                    0.0
+                )
+            )
+
+        box.addView(
+            text(
+                name,
+                20f,
+                true
+            )
+        )
+
+        box.addView(
+            text(
+                category.uppercase(),
+                12f,
+                true
+            )
+        )
+
+        val details =
+            text(
+                "Radius: %.0f metres\nAction: %s\nStatus: Active"
+                    .format(
+                        radius,
+                        action.uppercase()
+                    ),
+                14f
+            )
+
+        details.setPadding(
+            0,
+            dp(8),
+            0,
+            0
+        )
+
+        box.addView(details)
+
+        zoneList.addView(box)
+
+        val spacer =
+            View(this)
+
+        spacer.layoutParams =
+            LinearLayout.LayoutParams(
+                1,
+                dp(8)
+            )
+
+        zoneList.addView(spacer)
+    }
+
+    private fun registerGeofences(
+        geofences: List<Geofence>
+    ) {
+
         if (!hasForegroundLocation()) {
-            status.text = "Allow location permission, then Sync Zones."
+
+            status.text =
+                "Location Permission Required"
+
             return
         }
 
         if (!hasBackgroundLocation()) {
+
             status.text =
-                "Zones synced. Tap Enable Background Location, allow access, then Sync Zones."
+                "Enable Background Location"
+
             return
         }
 
         if (geofences.isEmpty()) {
-            geofencingClient.removeGeofences(geofencePendingIntent)
-                .addOnSuccessListener {
-                    status.text = "No active zones to monitor."
-                }
-                .addOnFailureListener {
-                    status.text = "No zones found. Try Sync Zones again."
-                }
+
+            geofencingClient
+                .removeGeofences(
+                    geofencePendingIntent
+                )
+
+            status.text =
+                "No Active Zones"
+
             return
         }
 
-        val request = GeofencingRequest.Builder()
-            .setInitialTrigger(
-                GeofencingRequest.INITIAL_TRIGGER_ENTER
-            )
-            .addGeofences(geofences)
-            .build()
+        val request =
+            GeofencingRequest.Builder()
+                .setInitialTrigger(
+                    GeofencingRequest.INITIAL_TRIGGER_ENTER
+                )
+                .addGeofences(geofences)
+                .build()
 
-        geofencingClient.removeGeofences(geofencePendingIntent)
+        geofencingClient
+            .removeGeofences(
+                geofencePendingIntent
+            )
             .addOnCompleteListener {
+
                 try {
-                    geofencingClient.addGeofences(
-                        request,
-                        geofencePendingIntent
-                    ).addOnSuccessListener {
-                        status.text =
-                            "Monitoring ${geofences.size} zone(s) in background."
-                    }.addOnFailureListener { error ->
-                        status.text =
-                            "Geofence failed: ${error.message ?: "Check permissions"}"
-                    }
+
+                    geofencingClient
+                        .addGeofences(
+                            request,
+                            geofencePendingIntent
+                        )
+                        .addOnSuccessListener {
+
+                            status.text =
+                                "Protection Active"
+
+                        }
+                        .addOnFailureListener { error ->
+
+                            status.text =
+                                "Geofence Setup Failed: ${
+                                    error.message
+                                        ?: "Unknown error"
+                                }"
+                        }
+
                 } catch (e: SecurityException) {
+
                     status.text =
-                        "Location permission required. Enable it and sync again."
+                        "Location Permission Required"
                 }
             }
     }
