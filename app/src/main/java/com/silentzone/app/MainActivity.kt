@@ -45,10 +45,12 @@ class MainActivity : Activity() {
 
     private val geofencePendingIntent: PendingIntent by lazy {
 
-        val intent = Intent(
-            this,
-            GeofenceBroadcastReceiver::class.java
-        )
+        val intent = Intent().apply {
+              setClassName(
+               this@MainActivity,
+               "com.silentzone.app.GeofenceBroadcastReceiver"
+             )
+        }
 
         var flags = PendingIntent.FLAG_UPDATE_CURRENT
 
