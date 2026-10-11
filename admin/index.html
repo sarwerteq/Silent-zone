@@ -95,14 +95,15 @@
             the location of the public facility.
           </p>
 
-          <label for="radius">Zone radius</label>
-          <select id="radius">
-            <option value="100">100 metres</option>
-            <option value="200" selected>200 metres</option>
-            <option value="300">300 metres</option>
-            <option value="500">500 metres</option>
-            <option value="1000">1000 metres</option>
-          </select>
+          <label for="radius">Zone radius (metres)</label>
+           <input
+            id="radius"
+            type="number"
+            min="10"
+            max="500"
+            step="1"
+            value="100"
+            required>             
 
           <label for="soundAction">Phone sound action</label>
           <select id="soundAction">
