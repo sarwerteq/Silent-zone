@@ -1018,6 +1018,17 @@ class MainActivity : Activity() {
                         }
                     }
 
+                   getSharedPreferences(
+                     "silent_zone_geofence",
+                       Context.MODE_PRIVATE
+                   )
+                      .edit()
+                      .putString(
+                      "zone_actions",
+                       actionMap.toString()
+                   )
+                     .apply()
+                   
                     registerGeofences(
                         geofences.take(100)
                     )
