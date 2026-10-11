@@ -287,8 +287,9 @@ zoneForm.addEventListener("submit", async (event) => {
   submitButton.disabled = true;
   showMessage(zoneMessage, "Saving zone...");
 
+  const editId = zoneForm.dataset.editId;
+
   const body = {
-    area_id: $("areaId").value.trim(),
     name: $("zoneName").value.trim(),
     category: $("category").value,
     latitude: Number($("latitude").value),
@@ -305,11 +306,16 @@ zoneForm.addEventListener("submit", async (event) => {
     timezone: $("timezone").value.trim()
   };
 
-  try {
-    const editId = zoneForm.dataset.editId;
+  // area_id is required only when creating a new zone.
+  if (!editId) {
+    body.area_id = $("areaId").value.trim();
+  }
 
+  try {
     const data = await apiRequest(
-      editId ? `/zones/${encodeURIComponent(editId)}` : "/zones",
+      editId
+        ? `/zones/${encodeURIComponent(editId)}`
+        : "/zones",
       {
         method: editId ? "PATCH" : "POST",
         body: JSON.stringify(body)
@@ -329,7 +335,11 @@ zoneForm.addEventListener("submit", async (event) => {
 
     await loadZones();
   } catch (error) {
-    showMessage(zoneMessage, error.message || "Could not save zone.", "error");
+    showMessage(
+      zoneMessage,
+      error.message || "Could not save zone.",
+      "error"
+    );
   } finally {
     submitButton.disabled = false;
   }
