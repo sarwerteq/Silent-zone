@@ -893,9 +893,12 @@ class MainActivity : Activity() {
 
                 val geofences =
                     mutableListOf<Geofence>()
+                    
 
                 val zoneData =
                     mutableListOf<JSONObject>()
+
+                    val actionMap = JSONObject()
 
                 var count = 0
 
@@ -950,6 +953,14 @@ class MainActivity : Activity() {
                             "id",
                             "zone-$i"
                         )
+                        
+                    actionMap.put(
+                      id,
+                      zone.optString(
+                      "sound_action",
+                      "SILENT"
+                       ).uppercase()
+                   )
 
                     geofences.add(
                         Geofence.Builder()
