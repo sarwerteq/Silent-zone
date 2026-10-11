@@ -22,7 +22,6 @@ import android.widget.ScrollView
 import android.widget.TextView
 import com.google.android.gms.location.CancellationTokenSource
 import com.google.android.gms.location.Geofence
-import com.google.android.gms.location.GeofenceBroadcastReceiver
 import com.google.android.gms.location.GeofencingClient
 import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
