@@ -1,5 +1,3 @@
-package com.silentzone.app
-
 import android.Manifest
 import android.app.Activity
 import android.app.PendingIntent
@@ -9,6 +7,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.location.Location
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
@@ -20,14 +19,10 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import android.location.Location
+
+import com.google.android.gms.location.*
 import com.google.android.gms.tasks.CancellationTokenSource
-import com.google.android.gms.location.Geofence
-import com.google.android.gms.location.GeofencingClient
-import com.google.android.gms.location.GeofencingRequest
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
-import com.google.android.gms.location.Location
+
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
