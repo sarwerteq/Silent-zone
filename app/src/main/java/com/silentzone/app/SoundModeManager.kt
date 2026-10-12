@@ -51,26 +51,39 @@ object SoundModeManager {
         }
 
         return try {
-            when (mode) {
-                "SILENT" ->
-                    audio.ringerMode = AudioManager.RINGER_MODE_SILENT
+    when (mode) {
+        "SILENT" ->
+            audio.ringerMode =
+                AudioManager.RINGER_MODE_SILENT
 
-                "VIBRATE" ->
-                    audio.ringerMode = AudioManager.RINGER_MODE_VIBRATE
+        "VIBRATE" ->
+            audio.ringerMode =
+                AudioManager.RINGER_MODE_VIBRATE
 
-                "DND" ->
-                    notificationManager.setInterruptionFilter(
-                        NotificationManager.INTERRUPTION_FILTER_NONE
-                    )
-            }
-
-            "$mode mode requested"
-        } catch (e: SecurityException) {
-            "Permission required: ${e.message ?: "Check Android Settings"}"
-        } catch (e: Exception) {
-            "Unable to change mode: ${e.message ?: "Unknown error"}"
-        }
+        "DND" ->
+            notificationManager.setInterruptionFilter(
+                NotificationManager.INTERRUPTION_FILTER_NONE
+            )
     }
+
+    val actualMode = when (audio.ringerMode) {
+        AudioManager.RINGER_MODE_SILENT -> "SILENT"
+        AudioManager.RINGER_MODE_VIBRATE -> "VIBRATE"
+        AudioManager.RINGER_MODE_NORMAL -> "NORMAL"
+        else -> "UNKNOWN"
+    }
+
+    if (mode != "DND" && actualMode != mode) {
+        "FAILED: Requested $mode but phone is $actualMode"
+    } else {
+        "$mode mode applied successfully"
+    }
+
+} catch (e: SecurityException) {
+    "Permission required: ${e.message ?: "Check Android Settings"}"
+} catch (e: Exception) {
+    "Unable to change mode: ${e.message ?: "Unknown error"}"
+        }
 
     fun restore(context: Context): String {
         val prefs = context.getSharedPreferences(
