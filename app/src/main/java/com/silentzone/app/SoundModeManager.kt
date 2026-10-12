@@ -1,4 +1,3 @@
-
 package com.silentzone.app
 
 import android.app.NotificationManager
@@ -38,7 +37,6 @@ object SoundModeManager {
             return "DND access required in Android Settings"
         }
 
-        // Save the original phone mode only once.
         if (!prefs.getBoolean(KEY_SAVED, false)) {
             prefs.edit()
                 .putInt(KEY_RINGER, audio.ringerMode)
@@ -51,39 +49,44 @@ object SoundModeManager {
         }
 
         return try {
-    when (mode) {
-        "SILENT" ->
-            audio.ringerMode =
-                AudioManager.RINGER_MODE_SILENT
+            when (mode) {
+                "SILENT" ->
+                    audio.ringerMode =
+                        AudioManager.RINGER_MODE_SILENT
 
-        "VIBRATE" ->
-            audio.ringerMode =
-                AudioManager.RINGER_MODE_VIBRATE
+                "VIBRATE" ->
+                    audio.ringerMode =
+                        AudioManager.RINGER_MODE_VIBRATE
 
-        "DND" ->
-            notificationManager.setInterruptionFilter(
-                NotificationManager.INTERRUPTION_FILTER_NONE
-            )
-    }
+                "DND" ->
+                    notificationManager.setInterruptionFilter(
+                        NotificationManager.INTERRUPTION_FILTER_NONE
+                    )
+            }
 
-    val actualMode = when (audio.ringerMode) {
-        AudioManager.RINGER_MODE_SILENT -> "SILENT"
-        AudioManager.RINGER_MODE_VIBRATE -> "VIBRATE"
-        AudioManager.RINGER_MODE_NORMAL -> "NORMAL"
-        else -> "UNKNOWN"
-    }
+            val actualMode = when (audio.ringerMode) {
+                AudioManager.RINGER_MODE_SILENT -> "SILENT"
+                AudioManager.RINGER_MODE_VIBRATE -> "VIBRATE"
+                AudioManager.RINGER_MODE_NORMAL -> "NORMAL"
+                else -> "UNKNOWN"
+            }
 
-    if (mode != "DND" && actualMode != mode) {
-        "FAILED: Requested $mode but phone is $actualMode"
-    } else {
-        "$mode mode applied successfully"
-    }
+            if (mode != "DND" && actualMode != mode) {
+                "FAILED: Requested $mode but phone is $actualMode"
+            } else {
+                "$mode mode applied successfully"
+            }
 
-} catch (e: SecurityException) {
-    "Permission required: ${e.message ?: "Check Android Settings"}"
-} catch (e: Exception) {
-    "Unable to change mode: ${e.message ?: "Unknown error"}"
+        } catch (e: SecurityException) {
+            "Permission required: ${
+                e.message ?: "Check Android Settings"
+            }"
+        } catch (e: Exception) {
+            "Unable to change mode: ${
+                e.message ?: "Unknown error"
+            }"
         }
+    }
 
     fun restore(context: Context): String {
         val prefs = context.getSharedPreferences(
@@ -125,8 +128,11 @@ object SoundModeManager {
                 .apply()
 
             "Original phone mode restored"
+
         } catch (e: Exception) {
-            "Restore failed: ${e.message ?: "Check permissions"}"
+            "Restore failed: ${
+                e.message ?: "Check permissions"
+            }"
         }
     }
 }
