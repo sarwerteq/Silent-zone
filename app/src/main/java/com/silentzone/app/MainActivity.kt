@@ -157,6 +157,22 @@ class MainActivity : Activity() {
         }
     }
 
+
+private fun openNotificationPolicySettings() {
+    try {
+        val intent = android.content.Intent(
+            android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS
+        )
+        startActivity(intent)
+    } catch (e: Exception) {
+        android.widget.Toast.makeText(
+            this,
+            "Notification Policy settings unavailable",
+            android.widget.Toast.LENGTH_LONG
+        ).show()
+    }
+}
+    
     private fun buildPremiumUi() {
 
         val scroll =
@@ -361,6 +377,17 @@ class MainActivity : Activity() {
         locationCard.addView(
             locationButton
         )
+
+        
+val permissionButton = Button(this).apply {
+    text = "Grant Silent Permission"
+
+    setOnClickListener {
+        openNotificationPolicySettings()
+    }
+}
+
+locationCard.addView(permissionButton)
 
         root.addView(
             locationCard
