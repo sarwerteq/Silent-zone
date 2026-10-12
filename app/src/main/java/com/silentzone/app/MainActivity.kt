@@ -424,7 +424,7 @@ locationCard.addView(permissionButton)
             syncButton
         )
 
-        val permissionButton =
+      /*  val permissionButton =
             Button(this).apply {
 
                 text =
@@ -433,11 +433,11 @@ locationCard.addView(permissionButton)
                 setOnClickListener {
                     openLocationSettings()
                 }
-            }
+            } 
 
         actionsCard.addView(
             permissionButton
-        )
+        ) */
 
         root.addView(
             actionsCard
