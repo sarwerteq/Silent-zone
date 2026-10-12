@@ -649,56 +649,29 @@ class MainActivity : Activity() {
     // INSIDE / OUTSIDE CALCULATION
     // --------------------------------
 
-    private fun updateZoneProtection(
-    location: Location
-) {
+    
+private fun updateZoneProtection(location: Location) {
 
-    if (!::zoneList.isInitialized) {
-        return
-    }
+    if (!::zoneList.isInitialized) return
 
-    val zones =
-        getCurrentZoneData()
+    val zones = getCurrentZoneData()
 
     if (zones.isEmpty()) {
-
-        zoneProtection.text =
-            "No active Silent Zone available."
-
-        status.text =
-            "No Active Zones"
-
+        zoneProtection.text = "No active Silent Zone available."
+        status.text = "No Active Zones"
         return
     }
 
     var nearestZone: JSONObject? = null
-
-    var nearestDistance =
-        Double.MAX_VALUE
+    var nearestDistance = Double.MAX_VALUE
 
     for (zone in zones) {
+        val latitude = zone.optDouble("latitude", Double.NaN)
+        val longitude = zone.optDouble("longitude", Double.NaN)
 
-        val latitude =
-            zone.optDouble(
-                "latitude",
-                Double.NaN
-            )
+        if (!latitude.isFinite() || !longitude.isFinite()) continue
 
-        val longitude =
-            zone.optDouble(
-                "longitude",
-                Double.NaN
-            )
-
-        if (
-            !latitude.isFinite() ||
-            !longitude.isFinite()
-        ) {
-            continue
-        }
-
-        val result =
-            FloatArray(1)
+        val result = FloatArray(1)
 
         Location.distanceBetween(
             location.latitude,
@@ -708,138 +681,66 @@ class MainActivity : Activity() {
             result
         )
 
-        val distance =
-            result[0].toDouble()
+        val distance = result[0].toDouble()
 
-        if (
-            distance < nearestDistance
-        ) {
-
-            nearestDistance =
-                distance
-
-            nearestZone =
-                zone
+        if (distance < nearestDistance) {
+            nearestDistance = distance
+            nearestZone = zone
         }
     }
 
-    val zone =
-        nearestZone
+    val zone = nearestZone
 
     if (zone == null) {
-
-        zoneProtection.text =
-            "Unable to calculate zone distance."
-
+        zoneProtection.text = "Unable to calculate zone distance."
         return
     }
 
-    val radius =
-        zone.optDouble(
-            "radius_m",
-            zone.optDouble(
-                "radius_meters",
-                0.0
-            )
-        )
+    val radius = zone.optDouble(
+        "radius_m",
+        zone.optDouble("radius_meters", 0.0)
+    )
 
-    val name =
-        zone.optString(
-            "name",
-            "Silent Zone"
-        )
+    val name = zone.optString("name", "Silent Zone")
 
-    val action =
-        zone.optString(
-            "sound_action",
-            "SILENT"
-        ).uppercase()
+    val action = zone.optString(
+        "sound_action",
+        "SILENT"
+    ).uppercase()
 
-    val inside =
-        nearestDistance <= radius
+    val inside = nearestDistance <= radius
 
-    val distanceText =
-        if (nearestDistance < 1000) {
+    val distanceText = if (nearestDistance < 1000) {
+        String.format(Locale.US, "%.0f m", nearestDistance)
+    } else {
+        String.format(Locale.US, "%.2f km", nearestDistance / 1000.0)
+    }
 
-            String.format(
-                Locale.US,
-                "%.0f m",
-                nearestDistance
-            )
+    // Capture the actual result from SoundModeManager
+    val soundResult = if (inside) {
+        SoundModeManager.apply(this, action)
+    } else {
+        SoundModeManager.restore(this)
+    }
 
-        } else {
-
-            String.format(
-                Locale.US,
-                "%.2f km",
-                nearestDistance / 1000.0
-            )
-        }
-
-    /*
-     * AUTOMATIC SOUND CONTROL
-     */
+    val currentMode = getCurrentPhoneMode()
 
     if (inside) {
-
-        SoundModeManager.apply(
-            this,
-            action
-        )
-
+        status.text = "INSIDE SILENT ZONE"
+        status.setTextColor(Color.rgb(20, 130, 75))
     } else {
-
-        SoundModeManager.restore(
-            this
-        )
+        status.text = "OUTSIDE SILENT ZONE"
+        status.setTextColor(Color.rgb(70, 80, 95))
     }
 
-    val currentMode =
-        getCurrentPhoneMode()
-
-    if (inside) {
-
-        status.text =
-            "INSIDE SILENT ZONE"
-
-        status.setTextColor(
-            Color.rgb(20, 130, 75)
-        )
-
-        zoneProtection.text =
-            "● $name\n\n" +
-            "Distance: $distanceText / " +
-            String.format(
-                Locale.US,
-                "%.0f m radius",
-                radius
-            ) +
-            "\nRequired mode: $action\n" +
-            "Current phone mode: " +
-            getCurrentPhoneMode()
-
-    } else {
-
-        status.text =
-            "OUTSIDE SILENT ZONE"
-
-        status.setTextColor(
-            Color.rgb(70, 80, 95)
-        )
-
-        zoneProtection.text =
-            "○ Nearest zone: $name\n\n" +
-            "Distance: $distanceText / " +
-            String.format(
-                Locale.US,
-                "%.0f m radius",
-                radius
-            ) +
-            "\nZone action: $action\n" +
-            "Current phone mode: " +
-            getCurrentPhoneMode()
-    }
-    }
+    zoneProtection.text =
+        (if (inside) "● $name" else "○ Nearest zone: $name") +
+        "\n\nDistance: $distanceText / " +
+        String.format(Locale.US, "%.0f m radius", radius) +
+        "\nRequired mode: $action" +
+        "\nCurrent phone mode: $currentMode" +
+        "\n\nSound control: $soundResult"
+}
         
     // --------------------------------
     // STORE / READ ZONE DATA
