@@ -11,6 +11,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingEvent
+import com.google.android.gms.location.GeofenceStatusCodes
 import org.json.JSONObject
 
 class GeofenceBroadcastReceiver : BroadcastReceiver() {
@@ -22,9 +23,32 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
         val event =
             GeofencingEvent.fromIntent(intent)
-                ?: return
+
+        if (event == null) {
+            showNotification(
+                context,
+                "GEOFENCE ERROR: Event is null"
+            )
+            return
+        }
 
         if (event.hasError()) {
+
+            val errorMessage =
+                try {
+                    GeofenceStatusCodes
+                        .getStatusCodeString(
+                            event.errorCode
+                        )
+                } catch (_: Exception) {
+                    "Unknown geofence error: ${event.errorCode}"
+                }
+
+            showNotification(
+                context,
+                "GEOFENCE ERROR: $errorMessage"
+            )
+
             return
         }
 
@@ -32,11 +56,29 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             event.geofenceTransition
 
         if (
-            transition != Geofence.GEOFENCE_TRANSITION_ENTER &&
-            transition != Geofence.GEOFENCE_TRANSITION_EXIT
+            transition !=
+                Geofence.GEOFENCE_TRANSITION_ENTER &&
+            transition !=
+                Geofence.GEOFENCE_TRANSITION_EXIT
         ) {
+
+            showNotification(
+                context,
+                "GEOFENCE EVENT: Invalid transition $transition"
+            )
+
             return
         }
+
+        val transitionName =
+            if (
+                transition ==
+                    Geofence.GEOFENCE_TRANSITION_ENTER
+            ) {
+                "ENTER"
+            } else {
+                "EXIT"
+            }
 
         val prefs =
             context.getSharedPreferences(
@@ -68,11 +110,25 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                 ?.map { it.requestId }
                 ?: emptyList()
 
+        if (ids.isEmpty()) {
+
+            showNotification(
+                context,
+                "GEOFENCE $transitionName received, but no zone ID found."
+            )
+
+            return
+        }
+
+        /*
+         * Update active zones
+         */
+
         for (id in ids) {
 
             if (
                 transition ==
-                Geofence.GEOFENCE_TRANSITION_ENTER
+                    Geofence.GEOFENCE_TRANSITION_ENTER
             ) {
                 active.add(id)
             } else {
@@ -87,6 +143,10 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             )
             .apply()
 
+        /*
+         * Select highest-priority action
+         */
+
         val priorities =
             mapOf(
                 "DND" to 3,
@@ -97,8 +157,12 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         val selectedAction =
             active
                 .mapNotNull { id ->
+
                     actions
-                        .optString(id, "")
+                        .optString(
+                            id,
+                            ""
+                        )
                         .uppercase()
                         .takeIf {
                             it in priorities
@@ -108,15 +172,9 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                     priorities[it] ?: 0
                 }
 
-        val message =
-            if (
-                transition ==
-                Geofence.GEOFENCE_TRANSITION_ENTER
-            ) {
-                "Entered a Silent Zone"
-            } else {
-                "Exited a Silent Zone"
-            }
+        /*
+         * Apply / restore sound mode
+         */
 
         val modeMessage =
             if (active.isEmpty()) {
@@ -125,9 +183,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                     context
                 )
 
-            } else if (
-                selectedAction != null
-            ) {
+            } else if (selectedAction != null) {
 
                 SoundModeManager.apply(
                     context,
@@ -136,12 +192,36 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
             } else {
 
-                "Zone event received"
+                "Zone event received, but no valid sound action found"
             }
+
+        /*
+         * Diagnostic information
+         */
+
+        val zoneIds =
+            ids.joinToString(", ")
+
+        val activeZones =
+            if (active.isEmpty()) {
+                "none"
+            } else {
+                active.joinToString(", ")
+            }
+
+        val selected =
+            selectedAction ?: "NONE"
+
+        val message =
+            "GEOFENCE $transitionName\n" +
+            "Triggered zone: $zoneIds\n" +
+            "Active zones: $activeZones\n" +
+            "Selected action: $selected\n" +
+            "Sound result: $modeMessage"
 
         showNotification(
             context,
-            "$message • $modeMessage"
+            message
         )
     }
 
@@ -169,7 +249,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
         if (
             Build.VERSION.SDK_INT >=
-            Build.VERSION_CODES.O
+                Build.VERSION_CODES.O
         ) {
 
             manager.createNotificationChannel(
@@ -193,7 +273,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                     "Silent Zone"
                 )
                 .setContentText(
-                    message
+                    message.replace("\n", " • ")
                 )
                 .setStyle(
                     NotificationCompat.BigTextStyle()
