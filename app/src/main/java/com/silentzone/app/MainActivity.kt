@@ -786,213 +786,299 @@ private fun updateZoneProtection(location: Location) {
 
     private fun loadZones() {
 
-        status.text = "Syncing zones..."
+    status.text = "Syncing zones..."
 
-        connectionInfo.text =
-            "Connecting to Silent Zone server..."
+    connectionInfo.text =
+        "Connecting to Silent Zone server..."
 
-        thread {
+    thread {
+
+        var lastError: Exception? = null
+        var success = false
+
+        // Automatically retry 3 times
+        for (attempt in 1..3) {
 
             try {
+
+                if (attempt > 1) {
+
+                    runOnUiThread {
+
+                        status.text =
+                            "Retrying zone sync ($attempt/3)..."
+
+                        connectionInfo.text =
+                            "Previous sync failed. Retrying..."
+                    }
+
+                    // Wait before retry
+                    when (attempt) {
+                        2 -> Thread.sleep(2000)
+                        3 -> Thread.sleep(5000)
+                    }
+                }
 
                 val connection =
                     URL(apiUrl)
                         .openConnection() as HttpURLConnection
 
-                connection.requestMethod = "GET"
-                connection.connectTimeout = 15000
-                connection.readTimeout = 15000
+                try {
 
-                val response =
-                    connection.inputStream
-                        .bufferedReader()
-                        .use { it.readText() }
+                    connection.requestMethod = "GET"
 
-                connection.disconnect()
+                    connection.connectTimeout = 15000
+                    connection.readTimeout = 30000
 
-                val json =
-                    JSONObject(response)
-
-                val zones =
-                    json.optJSONArray("zones")
-                        ?: throw Exception(
-                            "Zones missing in API response"
-                        )
-
-                val geofences =
-                    mutableListOf<Geofence>()
-                    
-
-                val zoneData =
-                    mutableListOf<JSONObject>()
-
-                    val actionMap = JSONObject()
-
-                var count = 0
-
-                for (i in 0 until zones.length()) {
-
-                    val zone =
-                        zones.getJSONObject(i)
-
-                    if (
-                        !zone.optBoolean(
-                            "is_active",
-                            true
-                        )
-                    ) {
-                        continue
-                    }
-
-                    val latitude =
-                        zone.optDouble(
-                            "latitude",
-                            Double.NaN
-                        )
-
-                    val longitude =
-                        zone.optDouble(
-                            "longitude",
-                            Double.NaN
-                        )
-
-                    val radius =
-                        zone.optDouble(
-                            "radius_m",
-                            zone.optDouble(
-                                "radius_meters",
-                                0.0
-                            )
-                        )
-
-                    if (
-                        !latitude.isFinite() ||
-                        !longitude.isFinite() ||
-                        radius < 10 ||
-                        radius > 500 ||
-                        latitude !in -90.0..90.0 ||
-                        longitude !in -180.0..180.0
-                    ) {
-                        continue
-                    }
-
-                    val id =
-                        zone.optString(
-                            "id",
-                            "zone-$i"
-                        )
-                        
-                    actionMap.put(
-                      id,
-                      zone.optString(
-                      "sound_action",
-                      "SILENT"
-                       ).uppercase()
-                   )
-
-                    geofences.add(
-                        Geofence.Builder()
-                            .setRequestId(id)
-                            .setCircularRegion(
-                                latitude,
-                                longitude,
-                                radius.toFloat()
-                            )
-                            .setExpirationDuration(
-                                Geofence.NEVER_EXPIRE
-                            )
-                            .setTransitionTypes(
-                                Geofence.GEOFENCE_TRANSITION_ENTER or
-                                    Geofence.GEOFENCE_TRANSITION_EXIT
-                            )
-                            .setNotificationResponsiveness(
-                                60000
-                            )
-                            .build()
+                    connection.setRequestProperty(
+                        "Accept",
+                        "application/json"
                     )
 
-                    zoneData.add(zone)
+                    val responseCode =
+                        connection.responseCode
 
-                    count++
-                }
+                    if (responseCode !in 200..299) {
 
-                runOnUiThread {
+                        throw Exception(
+                            "Server returned HTTP $responseCode"
+                        )
+                    }
 
-                    currentZones.clear()
-                    currentZones.addAll(zoneData)
+                    val response =
+                        connection.inputStream
+                            .bufferedReader()
+                            .use { it.readText() }
 
-                    connectionInfo.text =
-                        "● Connected\n$count active zone(s)"
+                    val json =
+                        JSONObject(response)
 
-                    zoneList.removeAllViews()
-
-                    if (count == 0) {
-
-                        zoneList.addView(
-                            text(
-                                "No active zones available.",
-                                15f
+                    val zones =
+                        json.optJSONArray("zones")
+                            ?: throw Exception(
+                                "Zones missing in API response"
                             )
+
+                    val geofences =
+                        mutableListOf<Geofence>()
+
+                    val zoneData =
+                        mutableListOf<JSONObject>()
+
+                    val actionMap =
+                        JSONObject()
+
+                    var count = 0
+
+                    for (i in 0 until zones.length()) {
+
+                        val zone =
+                            zones.getJSONObject(i)
+
+                        if (
+                            !zone.optBoolean(
+                                "is_active",
+                                true
+                            )
+                        ) {
+                            continue
+                        }
+
+                        val latitude =
+                            zone.optDouble(
+                                "latitude",
+                                Double.NaN
+                            )
+
+                        val longitude =
+                            zone.optDouble(
+                                "longitude",
+                                Double.NaN
+                            )
+
+                        val radius =
+                            zone.optDouble(
+                                "radius_m",
+                                zone.optDouble(
+                                    "radius_meters",
+                                    0.0
+                                )
+                            )
+
+                        if (
+                            !latitude.isFinite() ||
+                            !longitude.isFinite() ||
+                            radius < 10 ||
+                            radius > 500 ||
+                            latitude !in -90.0..90.0 ||
+                            longitude !in -180.0..180.0
+                        ) {
+                            continue
+                        }
+
+                        val id =
+                            zone.optString(
+                                "id",
+                                "zone-$i"
+                            )
+
+                        val action =
+                            zone.optString(
+                                "sound_action",
+                                "SILENT"
+                            ).uppercase()
+
+                        actionMap.put(
+                            id,
+                            action
                         )
 
-                        zoneProtection.text =
-                            "No active Silent Zone available."
+                        geofences.add(
+                            Geofence.Builder()
+                                .setRequestId(id)
+                                .setCircularRegion(
+                                    latitude,
+                                    longitude,
+                                    radius.toFloat()
+                                )
+                                .setExpirationDuration(
+                                    Geofence.NEVER_EXPIRE
+                                )
+                                .setTransitionTypes(
+                                    Geofence.GEOFENCE_TRANSITION_ENTER or
+                                        Geofence.GEOFENCE_TRANSITION_EXIT
+                                )
+                                .setNotificationResponsiveness(
+                                    60000
+                                )
+                                .build()
+                        )
 
-                    } else {
+                        zoneData.add(zone)
 
-                        zoneData.forEach { zone ->
+                        count++
+                    }
 
-                            addZoneCard(zone)
+                    // Save everything on UI thread
+                    runOnUiThread {
+
+                        currentZones.clear()
+
+                        currentZones.addAll(
+                            zoneData
+                        )
+
+                        connectionInfo.text =
+                            "● Connected\n$count active zone(s)"
+
+                        status.text =
+                            "Zones Synced"
+
+                        zoneList.removeAllViews()
+
+                        if (count == 0) {
+
+                            zoneList.addView(
+                                text(
+                                    "No active zones available.",
+                                    15f
+                                )
+                            )
+
+                            zoneProtection.text =
+                                "No active Silent Zone available."
+
+                        } else {
+
+                            zoneData.forEach { zone ->
+
+                                addZoneCard(zone)
+
+                            }
+                        }
+
+                        // Save zone actions for GeofenceBroadcastReceiver
+                        getSharedPreferences(
+                            "silent_zone_geofence",
+                            Context.MODE_PRIVATE
+                        )
+                            .edit()
+                            .putString(
+                                "zone_actions",
+                                actionMap.toString()
+                            )
+                            .apply()
+
+                        // Register background geofences
+                        registerGeofences(
+                            geofences.take(100)
+                        )
+
+                        // Check current location immediately
+                        if (hasForegroundLocation()) {
+
+                            checkLocation()
+
                         }
                     }
 
-                   getSharedPreferences(
-                     "silent_zone_geofence",
-                       Context.MODE_PRIVATE
-                   )
-                      .edit()
-                      .putString(
-                      "zone_actions",
-                       actionMap.toString()
-                   )
-                     .apply()
-                   
-                    registerGeofences(
-                        geofences.take(100)
-                    )
+                    success = true
+                    lastError = null
 
-                    if (hasForegroundLocation()) {
-                        checkLocation()
-                    }
+                    // Sync successful, no more retry
+                    break
+
+                } finally {
+
+                    connection.disconnect()
+
                 }
 
             } catch (e: Exception) {
 
-                runOnUiThread {
+                lastError = e
 
-                    connectionInfo.text =
-                        "● Connection failed"
+                // If this was the last attempt,
+                // show final error
+                if (attempt == 3) {
 
-                    status.text =
-                        "Sync Failed"
+                    runOnUiThread {
 
-                    zoneList.removeAllViews()
+                        connectionInfo.text =
+                            "● Connection failed"
 
-                    zoneList.addView(
-                        text(
-                            e.localizedMessage
-                                ?: "Unable to load zones.",
-                            14f
+                        status.text =
+                            "Sync Failed"
+
+                        zoneList.removeAllViews()
+
+                        zoneList.addView(
+                            text(
+                                e.localizedMessage
+                                    ?: "Unable to load zones.",
+                                14f
+                            )
                         )
-                    )
 
-                    zoneProtection.text =
-                        "Unable to load zone information."
+                        zoneProtection.text =
+                            "Unable to load zone information."
+                    }
                 }
             }
         }
-    }
 
+        // Safety check
+        if (!success && lastError != null) {
+
+            runOnUiThread {
+
+                status.text =
+                    "Sync Failed"
+
+            }
+        }
+    }
+    }
     // --------------------------------
     // ZONE CARD
     // --------------------------------
