@@ -77,6 +77,11 @@ class MainActivity : Activity() {
     buildPremiumUi()
     loadZones()
     }
+    if (!LocationPermissionManager.hasForegroundLocation(this)) {
+
+    LocationPermissionManager.requestForegroundLocation(this)
+
+    }
 
     private fun dp(value: Int): Int {
         return (
@@ -378,7 +383,51 @@ private fun openNotificationPolicySettings() {
             locationButton
         )
 
-        
+  val backgroundPermissionButton =
+    Button(this).apply {
+
+        text =
+            "Allow Background Location"
+
+        setOnClickListener {
+
+            LocationPermissionManager
+                .openBackgroundLocationSettings(
+                    this@MainActivity
+                )
+        }
+    }
+
+locationCard.addView(
+    backgroundPermissionButton
+)
+val pauseSilentButton =
+    Button(this).apply {
+
+        text =
+            "Pause Silent Zone"
+
+        setOnClickListener {
+
+            val result =
+                SilentZonePauseManager.pause(
+                    this@MainActivity
+                )
+
+            text =
+                "Silent Zone Paused"
+
+            status.text =
+                "SILENT ZONE PAUSED"
+
+            zoneProtection.text =
+                "Automatic Silent Mode paused until you leave this zone.\n\n$result"
+        }
+    }
+
+locationCard.addView(
+    pauseSilentButton
+)
 val permissionButton = Button(this).apply {
     text = "Grant Silent Permission"
 
@@ -744,10 +793,32 @@ private fun updateZoneProtection(location: Location) {
     }
 
     // Capture the actual result from SoundModeManager
-    val soundResult = if (inside) {
-        SoundModeManager.apply(this, action)
+    val soundResult =
+    if (inside) {
+
+        if (
+            SilentZonePauseManager
+                .isPaused(this)
+        ) {
+
+            "Silent Zone temporarily paused"
+
+        } else {
+
+            SoundModeManager.apply(
+                this,
+                action
+            )
+        }
+
     } else {
-        SoundModeManager.restore(this)
+
+        SilentZonePauseManager
+            .resetOnExit(this)
+
+        SoundModeManager.restore(
+            this
+        )
     }
 
     val currentMode = getCurrentPhoneMode()
