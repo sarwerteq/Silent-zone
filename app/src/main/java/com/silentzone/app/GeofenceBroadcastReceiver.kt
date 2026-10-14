@@ -177,24 +177,35 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
          */
 
         val modeMessage =
-            if (active.isEmpty()) {
+    if (active.isEmpty()) {
 
-                SoundModeManager.restore(
-                    context
-                )
+        SilentZonePauseManager
+            .resetOnExit(context)
 
-            } else if (selectedAction != null) {
+        SoundModeManager.restore(
+            context
+        )
 
-                SoundModeManager.apply(
-                    context,
-                    selectedAction
-                )
+    } else if (
+        SilentZonePauseManager
+            .isPaused(context)
+    ) {
 
-            } else {
+        "Silent Zone temporarily paused"
 
-                "Zone event received, but no valid sound action found"
-            }
+    } else if (
+        selectedAction != null
+    ) {
 
+        SoundModeManager.apply(
+            context,
+            selectedAction
+        )
+
+    } else {
+
+        "Zone event received, but no valid sound action found"
+    }
         /*
          * Diagnostic information
          */
