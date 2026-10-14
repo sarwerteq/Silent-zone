@@ -76,13 +76,13 @@ class MainActivity : Activity() {
 
     buildPremiumUi()
     loadZones()
-    }
+    
     if (!LocationPermissionManager.hasForegroundLocation(this)) {
 
     LocationPermissionManager.requestForegroundLocation(this)
 
+      }
     }
-
     private fun dp(value: Int): Int {
         return (
             value * resources.displayMetrics.density
