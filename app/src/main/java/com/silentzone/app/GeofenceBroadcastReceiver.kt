@@ -12,7 +12,6 @@ import androidx.core.app.NotificationCompat
 import com.google.android.gms.location.Geofence
 import com.google.android.gms.location.GeofencingEvent
 import com.google.android.gms.location.GeofenceStatusCodes
-import org.json.JSONObject
 
 class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
@@ -25,10 +24,12 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             GeofencingEvent.fromIntent(intent)
 
         if (event == null) {
+
             showNotification(
                 context,
                 "GEOFENCE ERROR: Event is null"
             )
+
             return
         }
 
@@ -36,11 +37,14 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
             val errorMessage =
                 try {
+
                     GeofenceStatusCodes
                         .getStatusCodeString(
                             event.errorCode
                         )
+
                 } catch (_: Exception) {
+
                     "Unknown geofence error: ${event.errorCode}"
                 }
 
@@ -73,41 +77,18 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         val transitionName =
             if (
                 transition ==
-                    Geofence.GEOFENCE_TRANSITION_ENTER
+                Geofence.GEOFENCE_TRANSITION_ENTER
             ) {
                 "ENTER"
             } else {
                 "EXIT"
             }
 
-        val prefs =
-            context.getSharedPreferences(
-                "silent_zone_geofence",
-                Context.MODE_PRIVATE
-            )
-
-        val actions =
-            try {
-                JSONObject(
-                    prefs.getString(
-                        "zone_actions",
-                        "{}"
-                    ) ?: "{}"
-                )
-            } catch (_: Exception) {
-                JSONObject()
-            }
-
-        val active =
-            prefs.getStringSet(
-                "active_zone_ids",
-                emptySet()
-            )?.toMutableSet()
-                ?: mutableSetOf()
-
         val ids =
             event.triggeringGeofences
-                ?.map { it.requestId }
+                ?.map {
+                    it.requestId
+                }
                 ?: emptyList()
 
         if (ids.isEmpty()) {
@@ -121,120 +102,111 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         }
 
         /*
-         * Update active zones
+         * Examples:
+         *
+         * OUTER:123
+         * INNER:123
          */
 
-        for (id in ids) {
-
-            if (
-                transition ==
-                    Geofence.GEOFENCE_TRANSITION_ENTER
-            ) {
-                active.add(id)
-            } else {
-                active.remove(id)
+        val hasInner =
+            ids.any {
+                it.startsWith(
+                    "INNER:"
+                )
             }
-        }
 
-        prefs.edit()
-            .putStringSet(
-                "active_zone_ids",
-                active
-            )
-            .apply()
-
-        /*
-         * Select highest-priority action
-         */
-
-        val priorities =
-            mapOf(
-                "DND" to 3,
-                "SILENT" to 2,
-                "VIBRATE" to 1
-            )
-
-        val selectedAction =
-            active
-                .mapNotNull { id ->
-
-                    actions
-                        .optString(
-                            id,
-                            ""
-                        )
-                        .uppercase()
-                        .takeIf {
-                            it in priorities
-                        }
-                }
-                .maxByOrNull {
-                    priorities[it] ?: 0
-                }
+        val hasOuter =
+            ids.any {
+                it.startsWith(
+                    "OUTER:"
+                )
+            }
 
         /*
-         * Apply / restore sound mode
+         * IMPORTANT:
+         *
+         * Geofence khud Silent/Normal decide
+         * nahi karega.
+         *
+         * Fresh high-accuracy location lekar
+         * PreciseZoneManager actual admin
+         * radius check karega.
          */
 
-        val modeMessage =
-    if (active.isEmpty()) {
+        val reason =
+            when {
 
-        SilentZonePauseManager
-            .resetOnExit(context)
+                hasInner &&
+                    transition ==
+                    Geofence.GEOFENCE_TRANSITION_ENTER -> {
 
-        SoundModeManager.restore(
+                    "INNER ENTER - checking actual radius"
+                }
+
+                hasInner &&
+                    transition ==
+                    Geofence.GEOFENCE_TRANSITION_EXIT -> {
+
+                    "INNER EXIT - checking actual radius"
+                }
+
+                hasOuter &&
+                    transition ==
+                    Geofence.GEOFENCE_TRANSITION_ENTER -> {
+
+                    "OUTER ENTER - checking actual radius"
+                }
+
+                hasOuter &&
+                    transition ==
+                    Geofence.GEOFENCE_TRANSITION_EXIT -> {
+
+                    "OUTER EXIT - checking actual radius"
+                }
+
+                else -> {
+
+                    "Geofence event - checking actual radius"
+                }
+            }
+
+        /*
+         * Fresh GPS verification.
+         */
+
+        PreciseZoneManager.checkCurrentLocation(
             context
-        )
+        ) { result ->
 
-    } else if (
-        SilentZonePauseManager
-            .isPaused(context)
-    ) {
+            /*
+             * Testing notification abhi ON rakhenge.
+             * Baad mein ise remove kar denge.
+             */
 
-        "Silent Zone temporarily paused"
+            val zoneIds =
+                ids.joinToString(
+                    ", "
+                )
 
-    } else if (
-        selectedAction != null
-    ) {
+            val message =
+                "GEOFENCE $transitionName\n" +
+                "Triggered: $zoneIds\n" +
+                "$reason\n" +
+                "Result: $result"
 
-        SoundModeManager.apply(
-            context,
-            selectedAction
-        )
-
-    } else {
-
-        "Zone event received, but no valid sound action found"
+            showNotification(
+                context,
+                message
+            )
+        }
     }
-        /*
-         * Diagnostic information
-         */
 
-        val zoneIds =
-            ids.joinToString(", ")
-
-        val activeZones =
-            if (active.isEmpty()) {
-                "none"
-            } else {
-                active.joinToString(", ")
-            }
-
-        val selected =
-            selectedAction ?: "NONE"
-
-        val message =
-            "GEOFENCE $transitionName\n" +
-            "Triggered zone: $zoneIds\n" +
-            "Active zones: $activeZones\n" +
-            "Selected action: $selected\n" +
-            "Sound result: $modeMessage"
-
-        showNotification(
-            context,
-            message
-        )
-    }
+    /*
+     * Diagnostic notification.
+     *
+     * Abhi testing ke liye rakha hai.
+     * Final app mein baad mein hata denge.
+     */
 
     private fun showNotification(
         context: Context,
@@ -245,7 +217,8 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
             Build.VERSION.SDK_INT >= 33 &&
             context.checkSelfPermission(
                 Manifest.permission.POST_NOTIFICATIONS
-            ) != PackageManager.PERMISSION_GRANTED
+            ) !=
+            PackageManager.PERMISSION_GRANTED
         ) {
             return
         }
@@ -260,7 +233,7 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
 
         if (
             Build.VERSION.SDK_INT >=
-                Build.VERSION_CODES.O
+            Build.VERSION_CODES.O
         ) {
 
             manager.createNotificationChannel(
@@ -284,17 +257,26 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
                     "Silent Zone"
                 )
                 .setContentText(
-                    message.replace("\n", " • ")
+                    message.replace(
+                        "\n",
+                        " • "
+                    )
                 )
                 .setStyle(
-                    NotificationCompat.BigTextStyle()
-                        .bigText(message)
+                    NotificationCompat
+                        .BigTextStyle()
+                        .bigText(
+                            message
+                        )
                 )
-                .setAutoCancel(true)
+                .setAutoCancel(
+                    true
+                )
                 .build()
 
         manager.notify(
-            System.currentTimeMillis().toInt(),
+            System.currentTimeMillis()
+                .toInt(),
             notification
         )
     }
