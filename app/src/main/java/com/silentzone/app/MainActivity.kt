@@ -1038,7 +1038,10 @@ private fun updateZoneProtection(location: Location) {
                         currentZones.addAll(
                             zoneData
                         )
-
+                        ZoneStorageManager.saveZones(
+                        this@MainActivity,
+                         zoneData
+                        )
                         connectionInfo.text =
                             "● Connected\n$count active zone(s)"
 
@@ -1080,10 +1083,10 @@ private fun updateZoneProtection(location: Location) {
                             )
                             .apply()
 
-                        // Register background geofences
-                        registerGeofences(
-                            geofences.take(100)
-                        )
+                        // Register OUTER + INNER geofences
+                         ZoneGeofenceManager.registerSavedZones(
+                         this@MainActivity
+                         )
 
                         // Check current location immediately
                         if (hasForegroundLocation()) {
