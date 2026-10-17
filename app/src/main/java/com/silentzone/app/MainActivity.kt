@@ -39,6 +39,7 @@ class MainActivity : Activity() {
     private lateinit var locationInfo: TextView
     private lateinit var connectionInfo: TextView
     private lateinit var geofencingClient: GeofencingClient
+    private var currentInsideZoneId: String? = null
 
     private val apiUrl =
         "https://silent-zone.onrender.com/api/zones"
@@ -409,9 +410,26 @@ val pauseSilentButton =
 
         setOnClickListener {
 
+            val zoneId =
+                currentInsideZoneId
+
+            if (
+                zoneId.isNullOrBlank()
+            ) {
+
+                status.text =
+                    "NOT INSIDE SILENT ZONE"
+
+                zoneProtection.text =
+                    "Pause is available only while you are inside a Silent Zone."
+
+                return@setOnClickListener
+            }
+
             val result =
                 SilentZonePauseManager.pause(
-                    this@MainActivity
+                    this@MainActivity,
+                    zoneId
                 )
 
             text =
@@ -421,7 +439,7 @@ val pauseSilentButton =
                 "SILENT ZONE PAUSED"
 
             zoneProtection.text =
-                "Automatic Silent Mode paused until you leave this zone.\n\n$result"
+                "This Silent Zone is temporarily paused until you leave it.\n\n$result"
         }
     }
 
@@ -785,7 +803,25 @@ private fun updateZoneProtection(location: Location) {
     ).uppercase()
 
     val inside = nearestDistance <= radius
+    val zoneId =
+    zone.optString(
+        "id",
+        ""
+    )
 
+if (inside) {
+
+    currentInsideZoneId =
+        zoneId
+
+} else {
+
+    currentInsideZoneId =
+        null
+
+    SilentZonePauseManager
+        .resetOnExit(this)
+}
     val distanceText = if (nearestDistance < 1000) {
         String.format(Locale.US, "%.0f m", nearestDistance)
     } else {
@@ -798,7 +834,10 @@ private fun updateZoneProtection(location: Location) {
 
         if (
             SilentZonePauseManager
-                .isPaused(this)
+               .isPaused(
+                 this,
+                zoneId
+           )
         ) {
 
             "Silent Zone temporarily paused"
