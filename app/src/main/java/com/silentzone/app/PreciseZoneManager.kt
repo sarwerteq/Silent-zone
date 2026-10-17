@@ -7,11 +7,21 @@ import android.location.Location
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
+import org.json.JSONObject
 
 object PreciseZoneManager {
 
     private const val EXIT_BUFFER_METERS =
         10.0
+
+    private const val PRECISE_PREFS =
+        "silent_zone_precise"
+
+    private const val KEY_INSIDE =
+        "inside_actual_zone"
+
+    private const val KEY_LAST_ZONE_ID =
+        "last_actual_zone_id"
 
     fun checkCurrentLocation(
         context: Context,
@@ -100,8 +110,8 @@ object PreciseZoneManager {
                 context
             )
 
-        var insideZone:
-            org.json.JSONObject? = null
+        var insideZone: JSONObject? =
+            null
 
         var insideDistance =
             Double.MAX_VALUE
@@ -112,6 +122,9 @@ object PreciseZoneManager {
         var nearestExitRadius =
             0.0
 
+        /*
+         * Find current actual zone.
+         */
         for (zone in zones) {
 
             if (
@@ -179,7 +192,8 @@ object PreciseZoneManager {
             }
 
             /*
-             * Actual Silent radius
+             * User is actually inside this
+             * zone's admin radius.
              */
             if (
                 distance <= radius &&
@@ -194,87 +208,176 @@ object PreciseZoneManager {
             }
         }
 
-        /*
-         * User manually paused Silent Zone
-         */
-        if (
-            SilentZonePauseManager
-                .isPaused(context)
-        ) {
-
-            callback?.invoke(
-                "Silent Zone paused by user"
-            )
-
-            return
-        }
-
-        /*
-         * Actually inside admin radius
-         */
-        if (insideZone != null) {
-
-            val action =
-                insideZone.optString(
-                    "sound_action",
-                    "SILENT"
-                ).uppercase()
-
-            val name =
-                insideZone.optString(
-                    "name",
-                    "Silent Zone"
-                )
-
-            val result =
-                SoundModeManager.apply(
-                    context,
-                    action
-                )
-
-            context.getSharedPreferences(
-                "silent_zone_precise",
-                Context.MODE_PRIVATE
-            )
-                .edit()
-                .putBoolean(
-                    "inside_actual_zone",
-                    true
-                )
-                .apply()
-
-            callback?.invoke(
-                "$name • ${insideDistance.toInt()}m • $result"
-            )
-
-            return
-        }
-
         val prefs =
             context.getSharedPreferences(
-                "silent_zone_precise",
+                PRECISE_PREFS,
                 Context.MODE_PRIVATE
             )
 
         val wasInside =
             prefs.getBoolean(
-                "inside_actual_zone",
+                KEY_INSIDE,
                 false
             )
 
+        val previousZoneId =
+            prefs.getString(
+                KEY_LAST_ZONE_ID,
+                null
+            )
+
         /*
-         * Only restore after crossing radius + 10m.
+         * ---------------------------------
+         * CURRENTLY INSIDE A ZONE
+         * ---------------------------------
          */
+
+        if (insideZone != null) {
+
+            val currentZone =
+                insideZone
+
+            val zoneId =
+                currentZone.optString(
+                    "id",
+                    ""
+                )
+
+            val name =
+                currentZone.optString(
+                    "name",
+                    "Silent Zone"
+                )
+
+            val action =
+                currentZone.optString(
+                    "sound_action",
+                    "SILENT"
+                ).uppercase()
+
+            /*
+             * We moved from Zone A
+             * directly into Zone B.
+             *
+             * Pause belonging to Zone A
+             * must not affect Zone B.
+             */
+            if (
+                previousZoneId != null &&
+                previousZoneId != zoneId
+            ) {
+
+                SilentZonePauseManager
+                    .resetOnExit(
+                        context
+                    )
+            }
+
+            /*
+             * Save current actual zone.
+             */
+            prefs.edit()
+                .putBoolean(
+                    KEY_INSIDE,
+                    true
+                )
+                .putString(
+                    KEY_LAST_ZONE_ID,
+                    zoneId
+                )
+                .apply()
+
+            /*
+             * Check pause ONLY for
+             * this particular zone.
+             */
+            if (
+                SilentZonePauseManager
+                    .isPaused(
+                        context,
+                        zoneId
+                    )
+            ) {
+
+                callback?.invoke(
+                    "$name • ${insideDistance.toInt()}m • Silent Zone temporarily paused"
+                )
+
+                return
+            }
+
+            /*
+             * Not paused.
+             * Apply admin-selected mode.
+             */
+            val soundResult =
+                SoundModeManager.apply(
+                    context,
+                    action
+                )
+
+            callback?.invoke(
+                "$name • ${insideDistance.toInt()}m • $soundResult"
+            )
+
+            return
+        }
+
+        /*
+         * ---------------------------------
+         * CURRENTLY OUTSIDE ACTUAL ZONE
+         * ---------------------------------
+         */
+
         if (
             wasInside &&
             nearestDistance >
             nearestExitRadius
         ) {
 
-            val result =
+            /*
+             * First clear pause.
+             *
+             * Therefore next zone can
+             * automatically become Silent.
+             */
+            SilentZonePauseManager
+                .resetOnExit(
+                    context
+                )
+
+            val soundResult =
                 SoundModeManager.restore(
                     context
                 )
+
+            prefs.edit()
+                .putBoolean(
+                    KEY_INSIDE,
+                    false
+                )
+                .remove(
+                    KEY_LAST_ZONE_ID
+                )
+                .apply()
+
+            callback?.invoke(
+                "Outside actual zone • $soundResult"
+            )
+
+            return
+        }
+
+        /*
+         * Not inside any zone.
+         *
+         * If old paused zone is no longer
+         * the current zone, clear its pause.
+         */
+        if (
+            previousZoneId != null &&
+            !wasInside
+        ) {
 
             SilentZonePauseManager
                 .resetOnExit(
@@ -282,21 +385,14 @@ object PreciseZoneManager {
                 )
 
             prefs.edit()
-                .putBoolean(
-                    "inside_actual_zone",
-                    false
+                .remove(
+                    KEY_LAST_ZONE_ID
                 )
                 .apply()
-
-            callback?.invoke(
-                "Outside actual zone • $result"
-            )
-
-        } else {
-
-            callback?.invoke(
-                "Outside actual Silent radius"
-            )
         }
+
+        callback?.invoke(
+            "Outside actual Silent radius"
+        )
     }
 }
