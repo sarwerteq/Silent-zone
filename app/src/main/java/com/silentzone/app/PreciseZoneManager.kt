@@ -24,81 +24,176 @@ object PreciseZoneManager {
         "last_actual_zone_id"
 
     fun checkCurrentLocation(
-        context: Context,
-        callback: ((String) -> Unit)? = null
+    context: Context,
+    callback: ((String) -> Unit)? = null
+) {
+
+    if (
+        context.checkSelfPermission(
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) != PackageManager.PERMISSION_GRANTED
     ) {
 
-        if (
-            context.checkSelfPermission(
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
+        callback?.invoke(
+            "Location permission missing"
+        )
 
-            callback?.invoke(
-                "Location permission missing"
-            )
+        return
+    }
 
-            return
-        }
+    val zones =
+        ZoneStorageManager.getZones(
+            context
+        )
 
-        val zones =
-            ZoneStorageManager.getZones(
+    if (zones.isEmpty()) {
+
+        callback?.invoke(
+            "No saved zones"
+        )
+
+        return
+    }
+
+    val client =
+        LocationServices
+            .getFusedLocationProviderClient(
                 context
             )
 
-        if (zones.isEmpty()) {
+    /*
+     * First try LAST LOCATION.
+     *
+     * Ye normally bahut fast milta hai.
+     */
+    try {
 
-            callback?.invoke(
-                "No saved zones"
-            )
+        client.lastLocation
+            .addOnSuccessListener { lastLocation ->
 
-            return
-        }
+                if (lastLocation != null) {
 
-        val client =
-            LocationServices
-                .getFusedLocationProviderClient(
-                    context
+                    /*
+                     * Immediately check zone
+                     * using available location.
+                     */
+                    evaluate(
+                        context,
+                        lastLocation,
+                        callback
+                    )
+
+                    /*
+                     * Saath mein fresh GPS location
+                     * bhi request karenge.
+                     */
+                    requestFreshLocation(
+                        context,
+                        callback
+                    )
+
+                } else {
+
+                    /*
+                     * Cached location nahi mili.
+                     * Fresh location request karo.
+                     */
+                    requestFreshLocation(
+                        context,
+                        callback
+                    )
+                }
+            }
+            .addOnFailureListener {
+
+                requestFreshLocation(
+                    context,
+                    callback
                 )
+            }
 
-        try {
+    } catch (_: SecurityException) {
 
-            client.getCurrentLocation(
-                Priority.PRIORITY_HIGH_ACCURACY,
-                CancellationTokenSource().token
+        callback?.invoke(
+            "Location permission error"
+        )
+    }
+    }
+
+    private fun requestFreshLocation(
+    context: Context,
+    callback: ((String) -> Unit)?
+) {
+
+    if (
+        context.checkSelfPermission(
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) != PackageManager.PERMISSION_GRANTED
+    ) {
+        return
+    }
+
+    val client =
+        LocationServices
+            .getFusedLocationProviderClient(
+                context
             )
-                .addOnSuccessListener { location ->
 
-                    if (location == null) {
+    val cancellationTokenSource =
+        CancellationTokenSource()
 
-                        callback?.invoke(
-                            "Location unavailable"
-                        )
+    /*
+     * Maximum 15 seconds wait.
+     *
+     * Iske baad GPS request cancel.
+     */
+    android.os.Handler(
+        android.os.Looper.getMainLooper()
+    ).postDelayed({
 
-                        return@addOnSuccessListener
-                    }
+        cancellationTokenSource.cancel()
 
+    }, 15000)
+
+    try {
+
+        client.getCurrentLocation(
+            Priority.PRIORITY_HIGH_ACCURACY,
+            cancellationTokenSource.token
+        )
+            .addOnSuccessListener { location ->
+
+                if (location != null) {
+
+                    /*
+                     * Fresh GPS result mil gaya.
+                     * Final precise zone check.
+                     */
                     evaluate(
                         context,
                         location,
                         callback
                     )
                 }
-                .addOnFailureListener {
+            }
+            .addOnFailureListener {
 
-                    callback?.invoke(
-                        "Location check failed"
-                    )
-                }
+                /*
+                 * Last location already evaluate
+                 * ho chuki ho sakti hai.
+                 *
+                 * Isliye yahan sound mode ko
+                 * change nahi karenge.
+                 */
+            }
 
-        } catch (_: SecurityException) {
+    } catch (_: SecurityException) {
 
-            callback?.invoke(
-                "Location permission error"
-            )
-        }
+        callback?.invoke(
+            "Location permission error"
+        )
     }
-
+    }
     private fun evaluate(
         context: Context,
         location: Location,
