@@ -71,38 +71,16 @@ object PreciseZoneManager {
         client.lastLocation
             .addOnSuccessListener { lastLocation ->
 
-                if (lastLocation != null) {
-
-                    /*
-                     * Immediately check zone
-                     * using available location.
-                     */
-                    evaluate(
-                        context,
-                        lastLocation,
-                        callback
-                    )
-
-                    /*
-                     * Saath mein fresh GPS location
-                     * bhi request karenge.
-                     */
-                    requestFreshLocation(
-                        context,
-                        callback
-                    )
-
-                } else {
-
-                    /*
-                     * Cached location nahi mili.
-                     * Fresh location request karo.
-                     */
-                    requestFreshLocation(
-                        context,
-                        callback
-                    )
-                }
+                /*
+ * Cached location purani ho sakti hai.
+ * Isliye isse Silent/Normal decide nahi karenge.
+ *
+ * Actual decision fresh GPS se hoga.
+ */
+requestFreshLocation(
+    context,
+    callback
+)
             }
             .addOnFailureListener {
 
@@ -199,6 +177,25 @@ object PreciseZoneManager {
         location: Location,
         callback: ((String) -> Unit)?
     ) {
+        /*
+ * Small 30m zone ke liye inaccurate
+ * GPS location par sound change nahi karna.
+ */
+val accuracy =
+    if (location.hasAccuracy()) {
+        location.accuracy
+    } else {
+        Float.MAX_VALUE
+    }
+
+if (accuracy > 25f) {
+
+    callback?.invoke(
+        "Waiting for precise GPS • Accuracy ±${accuracy.toInt()}m"
+    )
+
+    return
+}
 
         val zones =
             ZoneStorageManager.getZones(
