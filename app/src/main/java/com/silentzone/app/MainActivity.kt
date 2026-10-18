@@ -1081,6 +1081,9 @@ if (inside) {
                         this@MainActivity,
                          zoneData
                         )
+                        ZoneScheduleManager.scheduleAll(
+                        this@MainActivity
+                         )
                         connectionInfo.text =
                             "● Connected\n$count active zone(s)"
 
