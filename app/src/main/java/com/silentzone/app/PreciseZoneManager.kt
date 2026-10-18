@@ -332,6 +332,47 @@ if (accuracy > 25f) {
                 null
             )
 
+       /*
+ * User physically zone ke andar hai,
+ * but no zone schedule is currently active.
+ *
+ * Example:
+ * Zone = 1 PM - 2 PM
+ * Current = 2:00 PM
+ *
+ * Restore original phone mode.
+ */
+if (
+    physicallyInsideAnyZone &&
+    insideZone == null
+) {
+
+    SilentZonePauseManager
+        .resetOnExit(
+            context
+        )
+
+    val result =
+        SoundModeManager.restore(
+            context
+        )
+
+    prefs.edit()
+        .putBoolean(
+            KEY_INSIDE,
+            false
+        )
+        .remove(
+            KEY_LAST_ZONE_ID
+        )
+        .apply()
+
+    callback?.invoke(
+        "Zone schedule inactive • $result"
+    )
+
+    return
+}
         /*
          * ---------------------------------
          * CURRENTLY INSIDE A ZONE
