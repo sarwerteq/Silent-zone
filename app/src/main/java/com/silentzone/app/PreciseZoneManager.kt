@@ -213,107 +213,127 @@ if (accuracy > 25f) {
 
         var nearestExitRadius =
             0.0
-
+        var physicallyInsideAnyZone =
+           false
         /*
          * Find current actual zone.
          */
         for (zone in zones) {
 
-            if (
-                !zone.optBoolean(
-                    "is_active",
-                    true
-                )
-            ) {
-                continue
-            }
-            /*
- * Schedule OFF:
- * always allowed.
- *
- * Schedule ON:
- * only allowed during selected time.
- */
-            if (
-              !ZoneScheduleManager
-               .isScheduleActive(
-                zone
-                )
-              ) {
-              continue
-              }
-            val latitude =
-                zone.optDouble(
-                    "latitude",
-                    Double.NaN
-                )
+    if (
+        !zone.optBoolean(
+            "is_active",
+            true
+        )
+    ) {
+        continue
+    }
 
-            val longitude =
-                zone.optDouble(
-                    "longitude",
-                    Double.NaN
-                )
+    val latitude =
+        zone.optDouble(
+            "latitude",
+            Double.NaN
+        )
 
-            if (
-                !latitude.isFinite() ||
-                !longitude.isFinite()
-            ) {
-                continue
-            }
+    val longitude =
+        zone.optDouble(
+            "longitude",
+            Double.NaN
+        )
 
-            val radius =
-                zone.optDouble(
-                    "radius_m",
-                    zone.optDouble(
-                        "radius_meters",
-                        30.0
-                    )
-                )
+    if (
+        !latitude.isFinite() ||
+        !longitude.isFinite()
+    ) {
+        continue
+    }
 
-            val result =
-                FloatArray(1)
-
-            Location.distanceBetween(
-                location.latitude,
-                location.longitude,
-                latitude,
-                longitude,
-                result
+    val radius =
+        zone.optDouble(
+            "radius_m",
+            zone.optDouble(
+                "radius_meters",
+                50.0
             )
+        )
 
-            val distance =
-                result[0].toDouble()
+    val result =
+        FloatArray(1)
 
-            if (
-                distance <
-                nearestDistance
-            ) {
+    Location.distanceBetween(
+        location.latitude,
+        location.longitude,
+        latitude,
+        longitude,
+        result
+    )
 
-                nearestDistance =
-                    distance
+    val distance =
+        result[0].toDouble()
 
-                nearestExitRadius =
-                    radius +
-                        EXIT_BUFFER_METERS
-            }
+    /*
+     * Pehle sirf physical location check.
+     *
+     * Schedule active ho ya na ho,
+     * user radius ke andar hai ya nahi
+     * ye hume pata rehna chahiye.
+     */
+    if (
+        distance <= radius
+    ) {
 
-            /*
-             * User is actually inside this
-             * zone's admin radius.
-             */
-            if (
-                distance <= radius &&
-                distance < insideDistance
-            ) {
+        physicallyInsideAnyZone =
+            true
+    }
 
-                insideDistance =
-                    distance
+    /*
+     * Ab schedule check.
+     *
+     * Schedule OFF -> TRUE milega.
+     * Schedule ON -> sirf selected time
+     * ke andar TRUE milega.
+     */
+    if (
+        !ZoneScheduleManager
+            .isScheduleActive(
+                zone
+            )
+    ) {
+        continue
+    }
 
-                insideZone =
-                    zone
-            }
+    /*
+     * Nearest active scheduled zone.
+     */
+    if (
+        distance <
+        nearestDistance
+    ) {
+
+        nearestDistance =
+            distance
+
+        nearestExitRadius =
+            radius +
+                EXIT_BUFFER_METERS
+    }
+
+    /*
+     * Actual radius ke andar
+     * + schedule currently active.
+     */
+    if (
+        distance <= radius &&
+        distance < insideDistance
+    ) {
+
+        insideDistance =
+            distance
+
+        insideZone =
+            zone
+    }
         }
-
         val prefs =
             context.getSharedPreferences(
                 PRECISE_PREFS,
