@@ -17,11 +17,27 @@ class BootReceiver :
             Intent.ACTION_BOOT_COMPLETED
         ) {
 
+            /*
+             * Re-register locally saved zones.
+             * Internet required nahi.
+             */
             ZoneGeofenceManager
                 .registerSavedZones(
                     context
                 )
 
+            /*
+             * Re-register locally saved
+             * schedule alarms.
+             */
+            ZoneScheduleManager
+                .scheduleAll(
+                    context
+                )
+
+            /*
+             * Check current zone.
+             */
             PreciseZoneManager
                 .checkCurrentLocation(
                     context
