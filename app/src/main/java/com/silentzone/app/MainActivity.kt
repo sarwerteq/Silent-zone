@@ -870,13 +870,51 @@ if (inside) {
         status.setTextColor(Color.rgb(70, 80, 95))
     }
 
-    zoneProtection.text =
-        (if (inside) "● $name" else "○ Nearest zone: $name") +
-        "\n\nDistance: $distanceText / " +
-        String.format(Locale.US, "%.0f m radius", radius) +
-        "\nRequired mode: $action" +
-        "\nCurrent phone mode: $currentMode" +
-        "\n\nSound control: $soundResult"
+    val zoneLatitude =
+    zone.optDouble(
+        "latitude",
+        Double.NaN
+    )
+
+val zoneLongitude =
+    zone.optDouble(
+        "longitude",
+        Double.NaN
+    )
+
+zoneProtection.text =
+    (if (inside) "● $name" else "○ Nearest zone: $name") +
+
+    "\n\nPHONE LOCATION" +
+    String.format(
+        Locale.US,
+        "\nLat: %.6f" +
+        "\nLng: %.6f" +
+        "\nAccuracy: ±%.0f m",
+        location.latitude,
+        location.longitude,
+        location.accuracy
+    ) +
+
+    "\n\nZONE LOCATION" +
+    String.format(
+        Locale.US,
+        "\nLat: %.6f" +
+        "\nLng: %.6f",
+        zoneLatitude,
+        zoneLongitude
+    ) +
+
+    "\n\nDistance: $distanceText / " +
+    String.format(
+        Locale.US,
+        "%.0f m radius",
+        radius
+    ) +
+
+    "\nRequired mode: $action" +
+    "\nCurrent phone mode: $currentMode" +
+    "\n\nSound control: $soundResult"
 }
         
     // --------------------------------
