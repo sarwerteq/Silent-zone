@@ -227,7 +227,21 @@ if (accuracy > 25f) {
             ) {
                 continue
             }
-
+            /*
+ * Schedule OFF:
+ * always allowed.
+ *
+ * Schedule ON:
+ * only allowed during selected time.
+ */
+            if (
+              !ZoneScheduleManager
+               .isScheduleActive(
+                zone
+                )
+              ) {
+              continue
+              }
             val latitude =
                 zone.optDouble(
                     "latitude",
