@@ -80,6 +80,11 @@
 
         </receiver>
 
+        <receiver
+    android:name=".ScheduleReceiver"
+    android:enabled="true"
+    android:exported="false" />
+
     </application>
 
 </manifest>
