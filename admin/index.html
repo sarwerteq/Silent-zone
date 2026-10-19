@@ -113,20 +113,27 @@
           </select>
 
           <label class="check-row">
-            <input id="scheduleEnabled" type="checkbox">
-            Enable time schedule
-          </label>
+  <input id="scheduleEnabled" type="checkbox">
+  Enable time schedule
+</label>
 
-          <div id="scheduleFields" class="two-col hidden">
-            <div>
-              <label for="scheduleStart">Start time</label>
-              <input id="scheduleStart" type="time">
-            </div>
-            <div>
-              <label for="scheduleEnd">End time</label>
-              <input id="scheduleEnd" type="time">
-            </div>
-          </div>
+<div id="scheduleFields" class="hidden">
+
+  <p class="muted small">
+    Add one or more named time periods for this Silent Zone.
+    The phone action will apply only during these periods.
+  </p>
+
+  <div id="scheduleList"></div>
+
+  <button
+    id="addScheduleBtn"
+    type="button"
+    class="secondary full">
+    + Add Time
+  </button>
+
+</div>
 
           <label for="timezone">Time zone</label>
           <input id="timezone" value="Asia/Kolkata" required>
