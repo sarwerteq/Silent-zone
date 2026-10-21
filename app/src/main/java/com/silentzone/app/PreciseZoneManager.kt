@@ -4,562 +4,81 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
+import com.google.android.gms.location.CurrentLocationRequest
+import com.google.android.gms.location.Granularity
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
-import org.json.JSONObject
 
 object PreciseZoneManager {
+    private const val PREFS = "silent_zone_precise"
+    private const val KEY_INSIDE = "inside"
+    private const val KEY_ZONE = "last_zone_id"
+    private const val EXIT_BUFFER = 10.0
 
-    private const val EXIT_BUFFER_METERS =
-        10.0
-
-    private const val PRECISE_PREFS =
-        "silent_zone_precise"
-
-    private const val KEY_INSIDE =
-        "inside_actual_zone"
-
-    private const val KEY_LAST_ZONE_ID =
-        "last_actual_zone_id"
-
-    fun checkCurrentLocation(
-    context: Context,
-    callback: ((String) -> Unit)? = null
-) {
-
-    if (
-        context.checkSelfPermission(
-            Manifest.permission.ACCESS_FINE_LOCATION
-        ) != PackageManager.PERMISSION_GRANTED
-    ) {
-
-        callback?.invoke(
-            "Location permission missing"
-        )
-
-        return
-    }
-
-    val zones =
-        ZoneStorageManager.getZones(
-            context
-        )
-
-    if (zones.isEmpty()) {
-
-        callback?.invoke(
-            "No saved zones"
-        )
-
-        return
-    }
-
-    val client =
-        LocationServices
-            .getFusedLocationProviderClient(
-                context
-            )
-
-    /*
-     * First try LAST LOCATION.
-     *
-     * Ye normally bahut fast milta hai.
-     */
-    try {
-
-        client.lastLocation
-            .addOnSuccessListener { lastLocation ->
-
-                /*
- * Cached location purani ho sakti hai.
- * Isliye isse Silent/Normal decide nahi karenge.
- *
- * Actual decision fresh GPS se hoga.
- */
-requestFreshLocation(
-    context,
-    callback
-)
-            }
-            .addOnFailureListener {
-
-                requestFreshLocation(
-                    context,
-                    callback
-                )
-            }
-
-    } catch (_: SecurityException) {
-
-        callback?.invoke(
-            "Location permission error"
-        )
-    }
-    }
-
-    private fun requestFreshLocation(
-    context: Context,
-    callback: ((String) -> Unit)?
-) {
-
-    if (
-        context.checkSelfPermission(
-            Manifest.permission.ACCESS_FINE_LOCATION
-        ) != PackageManager.PERMISSION_GRANTED
-    ) {
-        return
-    }
-
-    val client =
-        LocationServices
-            .getFusedLocationProviderClient(
-                context
-            )
-
-    val cancellationTokenSource =
-        CancellationTokenSource()
-
-    /*
-     * Maximum 15 seconds wait.
-     *
-     * Iske baad GPS request cancel.
-     */
-    android.os.Handler(
-        android.os.Looper.getMainLooper()
-    ).postDelayed({
-
-        cancellationTokenSource.cancel()
-
-    }, 15000)
-
-    try {
-
-        client.getCurrentLocation(
-            Priority.PRIORITY_HIGH_ACCURACY,
-            cancellationTokenSource.token
-        )
-            .addOnSuccessListener { location ->
-
-                if (location != null) {
-
-                    /*
-                     * Fresh GPS result mil gaya.
-                     * Final precise zone check.
-                     */
-                    evaluate(
-                        context,
-                        location,
-                        callback
-                    )
-                }
-            }
-            .addOnFailureListener {
-
-                /*
-                 * Last location already evaluate
-                 * ho chuki ho sakti hai.
-                 *
-                 * Isliye yahan sound mode ko
-                 * change nahi karenge.
-                 */
-            }
-
-    } catch (_: SecurityException) {
-
-        callback?.invoke(
-            "Location permission error"
-        )
-    }
-    }
-    private fun evaluate(
-        context: Context,
-        location: Location,
-        callback: ((String) -> Unit)?
-    ) {
-        /*
- * Small 30m zone ke liye inaccurate
- * GPS location par sound change nahi karna.
- */
-val accuracy =
-    if (location.hasAccuracy()) {
-        location.accuracy
-    } else {
-        Float.MAX_VALUE
-    }
-
-if (accuracy > 25f) {
-
-    callback?.invoke(
-        "Waiting for precise GPS • Accuracy ±${accuracy.toInt()}m"
-    )
-
-    return
-}
-
-        val zones =
-            ZoneStorageManager.getZones(
-                context
-            )
-
-        var insideZone: JSONObject? =
-            null
-
-        var insideDistance =
-            Double.MAX_VALUE
-
-        var nearestDistance =
-            Double.MAX_VALUE
-
-        var nearestExitRadius =
-            0.0
-        var physicallyInsideAnyZone =
-           false
-        /*
-         * Find current actual zone.
-         */
-        for (zone in zones) {
-
-    if (
-        !zone.optBoolean(
-            "is_active",
-            true
-        )
-    ) {
-        continue
-    }
-
-    val latitude =
-        zone.optDouble(
-            "latitude",
-            Double.NaN
-        )
-
-    val longitude =
-        zone.optDouble(
-            "longitude",
-            Double.NaN
-        )
-
-    if (
-        !latitude.isFinite() ||
-        !longitude.isFinite()
-    ) {
-        continue
-    }
-
-    val radius =
-        zone.optDouble(
-            "radius_m",
-            zone.optDouble(
-                "radius_meters",
-                50.0
-            )
-        )
-
-    val result =
-        FloatArray(1)
-
-    Location.distanceBetween(
-        location.latitude,
-        location.longitude,
-        latitude,
-        longitude,
-        result
-    )
-
-    val distance =
-        result[0].toDouble()
-
-    /*
-     * Pehle sirf physical location check.
-     *
-     * Schedule active ho ya na ho,
-     * user radius ke andar hai ya nahi
-     * ye hume pata rehna chahiye.
-     */
-    if (
-        distance <= radius
-    ) {
-
-        physicallyInsideAnyZone =
-            true
-    }
-
-    /*
-     * Ab schedule check.
-     *
-     * Schedule OFF -> TRUE milega.
-     * Schedule ON -> sirf selected time
-     * ke andar TRUE milega.
-     */
-    if (
-        !ZoneScheduleManager
-            .isScheduleActive(
-                zone
-            )
-    ) {
-        continue
-    }
-
-    /*
-     * Nearest active scheduled zone.
-     */
-    if (
-        distance <
-        nearestDistance
-    ) {
-
-        nearestDistance =
-            distance
-
-        nearestExitRadius =
-            radius +
-                EXIT_BUFFER_METERS
-    }
-
-    /*
-     * Actual radius ke andar
-     * + schedule currently active.
-     */
-    if (
-        distance <= radius &&
-        distance < insideDistance
-    ) {
-
-        insideDistance =
-            distance
-
-        insideZone =
-            zone
-    }
+    fun checkCurrentLocation(context: Context, fallback: Location? = null, callback: ((String) -> Unit)? = null) {
+        if (context.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            callback?.invoke("Fine location permission required"); return
         }
-        val prefs =
-            context.getSharedPreferences(
-                PRECISE_PREFS,
-                Context.MODE_PRIVATE
-            )
+        val client = LocationServices.getFusedLocationProviderClient(context)
+        val token = CancellationTokenSource()
+        val request = CurrentLocationRequest.Builder()
+            .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
+            .setGranularity(Granularity.GRANULARITY_FINE)
+            .setMaxUpdateAgeMillis(0)
+            .setDurationMillis(15000)
+            .build()
+        try {
+            client.getCurrentLocation(request, token.token)
+                .addOnSuccessListener { evaluate(context, it ?: fallback, callback) }
+                .addOnFailureListener { evaluate(context, fallback, callback) }
+        } catch (_: SecurityException) { evaluate(context, fallback, callback) }
+    }
 
-        val wasInside =
-            prefs.getBoolean(
-                KEY_INSIDE,
-                false
-            )
-
-        val previousZoneId =
-            prefs.getString(
-                KEY_LAST_ZONE_ID,
-                null
-            )
-
-       /*
- * User physically zone ke andar hai,
- * but no zone schedule is currently active.
- *
- * Example:
- * Zone = 1 PM - 2 PM
- * Current = 2:00 PM
- *
- * Restore original phone mode.
- */
-if (
-    physicallyInsideAnyZone &&
-    insideZone == null
-) {
-
-    SilentZonePauseManager
-        .resetOnExit(
-            context
-        )
-
-    val result =
-        SoundModeManager.restore(
-            context
-        )
-
-    prefs.edit()
-        .putBoolean(
-            KEY_INSIDE,
-            false
-        )
-        .remove(
-            KEY_LAST_ZONE_ID
-        )
-        .apply()
-
-    callback?.invoke(
-        "Zone schedule inactive • $result"
-    )
-
-    return
-}
-        /*
-         * ---------------------------------
-         * CURRENTLY INSIDE A ZONE
-         * ---------------------------------
-         */
-
-        if (insideZone != null) {
-
-            val currentZone =
-                insideZone
-
-            val zoneId =
-                currentZone.optString(
-                    "id",
-                    ""
-                )
-
-            val name =
-                currentZone.optString(
-                    "name",
-                    "Silent Zone"
-                )
-
-            val action =
-                currentZone.optString(
-                    "sound_action",
-                    "SILENT"
-                ).uppercase()
-
-            /*
-             * We moved from Zone A
-             * directly into Zone B.
-             *
-             * Pause belonging to Zone A
-             * must not affect Zone B.
-             */
-            if (
-                previousZoneId != null &&
-                previousZoneId != zoneId
-            ) {
-
-                SilentZonePauseManager
-                    .resetOnExit(
-                        context
-                    )
-            }
-
-            /*
-             * Save current actual zone.
-             */
-            prefs.edit()
-                .putBoolean(
-                    KEY_INSIDE,
-                    true
-                )
-                .putString(
-                    KEY_LAST_ZONE_ID,
-                    zoneId
-                )
-                .apply()
-
-            /*
-             * Check pause ONLY for
-             * this particular zone.
-             */
-            if (
-                SilentZonePauseManager
-                    .isPaused(
-                        context,
-                        zoneId
-                    )
-            ) {
-
-                callback?.invoke(
-                    "$name • ${insideDistance.toInt()}m • Silent Zone temporarily paused"
-                )
-
+    fun evaluate(context: Context, location: Location?, callback: ((String) -> Unit)? = null) {
+        if (location == null) { callback?.invoke("Location unavailable"); return }
+        if (location.hasAccuracy() && location.accuracy > 75f) {
+            callback?.invoke("Waiting for better GPS • Accuracy ±${location.accuracy.toInt()}m"); return
+        }
+        val zones = ZoneStorageManager.getZones(context)
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val wasInside = prefs.getBoolean(KEY_INSIDE, false)
+        val previousId = prefs.getString(KEY_ZONE, null)
+        var best: org.json.JSONObject? = null
+        var bestDistance = Double.MAX_VALUE
+        var physicalInside = false
+        for (zone in zones) {
+            if (!zone.optBoolean("is_active", true)) continue
+            val lat = zone.optDouble("latitude", Double.NaN); val lon = zone.optDouble("longitude", Double.NaN)
+            val radius = zone.optDouble("radius_m", zone.optDouble("radius_meters", 0.0))
+            if (!lat.isFinite() || !lon.isFinite() || radius <= 0) continue
+            val r = FloatArray(1); Location.distanceBetween(location.latitude, location.longitude, lat, lon, r)
+            val d = r[0].toDouble()
+            if (d <= radius && d < bestDistance) { physicalInside = true; best = zone; bestDistance = d }
+        }
+        if (physicalInside && best != null) {
+            val id = best.optString("id", "")
+            prefs.edit().putBoolean(KEY_INSIDE, true).putString(KEY_ZONE, id).apply()
+            if (!ZoneScheduleManager.isScheduleActive(best)) {
+                SilentZonePauseManager.resume(context)
+                callback?.invoke(SoundModeManager.restore(context) + " • Inside zone, schedule inactive")
                 return
             }
-
-            /*
-             * Not paused.
-             * Apply admin-selected mode.
-             */
-            val soundResult =
-                SoundModeManager.apply(
-                    context,
-                    action
-                )
-
-            callback?.invoke(
-                "$name • ${insideDistance.toInt()}m • $soundResult"
-            )
-
+            if (SilentZonePauseManager.isPaused(context, id)) { callback?.invoke("Silent Zone paused") ; return }
+            callback?.invoke(SoundModeManager.apply(context, best.optString("sound_action", "SILENT")))
             return
         }
-
-        /*
-         * ---------------------------------
-         * CURRENTLY OUTSIDE ACTUAL ZONE
-         * ---------------------------------
-         */
-
-        if (
-            wasInside &&
-            nearestDistance >
-            nearestExitRadius
-        ) {
-
-            /*
-             * First clear pause.
-             *
-             * Therefore next zone can
-             * automatically become Silent.
-             */
-            SilentZonePauseManager
-                .resetOnExit(
-                    context
-                )
-
-            val soundResult =
-                SoundModeManager.restore(
-                    context
-                )
-
-            prefs.edit()
-                .putBoolean(
-                    KEY_INSIDE,
-                    false
-                )
-                .remove(
-                    KEY_LAST_ZONE_ID
-                )
-                .apply()
-
-            callback?.invoke(
-                "Outside actual zone • $soundResult"
-            )
-
-            return
+        if (wasInside) {
+            val old = zones.firstOrNull { it.optString("id", "") == previousId }
+            if (old != null) {
+                val r = FloatArray(1)
+                Location.distanceBetween(location.latitude, location.longitude, old.optDouble("latitude"), old.optDouble("longitude"), r)
+                val radius = old.optDouble("radius_m", old.optDouble("radius_meters", 0.0))
+                if (r[0] <= radius + EXIT_BUFFER) { callback?.invoke("Near zone boundary"); return }
+            }
         }
-
-        /*
-         * Not inside any zone.
-         *
-         * If old paused zone is no longer
-         * the current zone, clear its pause.
-         */
-        if (
-            previousZoneId != null &&
-            !wasInside
-        ) {
-
-            SilentZonePauseManager
-                .resetOnExit(
-                    context
-                )
-
-            prefs.edit()
-                .remove(
-                    KEY_LAST_ZONE_ID
-                )
-                .apply()
-        }
-
-        callback?.invoke(
-            "Outside actual Silent radius"
-        )
+        prefs.edit().putBoolean(KEY_INSIDE, false).remove(KEY_ZONE).apply()
+        SilentZonePauseManager.resetOnExit(context)
+        callback?.invoke(SoundModeManager.restore(context))
     }
 }
