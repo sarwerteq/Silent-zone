@@ -828,37 +828,23 @@ if (inside) {
         String.format(Locale.US, "%.2f km", nearestDistance / 1000.0)
     }
 
-    // Capture the actual result from SoundModeManager
+    // Schedule-aware sound control
+    val scheduleActive = ZoneScheduleManager.isScheduleActive(zone)
+
     val soundResult =
-    if (inside) {
-
-        if (
-            SilentZonePauseManager
-               .isPaused(
-                 this,
-                zoneId
-           )
-        ) {
-
-            "Silent Zone temporarily paused"
-
+        if (inside) {
+            if (SilentZonePauseManager.isPaused(this, zoneId)) {
+                "Silent Zone temporarily paused"
+            } else if (scheduleActive) {
+                SoundModeManager.apply(this, action)
+            } else {
+                SoundModeManager.restore(this) +
+                    " • Inside zone, but schedule is not active"
+            }
         } else {
-
-            SoundModeManager.apply(
-                this,
-                action
-            )
+            SilentZonePauseManager.resetOnExit(this)
+            SoundModeManager.restore(this)
         }
-
-    } else {
-
-        SilentZonePauseManager
-            .resetOnExit(this)
-
-        SoundModeManager.restore(
-            this
-        )
-    }
 
     val currentMode = getCurrentPhoneMode()
 
@@ -913,6 +899,8 @@ zoneProtection.text =
     ) +
 
     "\nRequired mode: $action" +
+    "\nSchedule: ${ZoneDisplayHelper.scheduleText(zone)}" +
+    "\nSchedule active now: ${if (scheduleActive) "YES" else "NO"}" +
     "\nCurrent phone mode: $currentMode" +
     "\n\nSound control: $soundResult"
 }
@@ -1314,11 +1302,14 @@ zoneProtection.text =
 
         box.addView(categoryText)
 
+    val scheduleText = ZoneDisplayHelper.scheduleText(zone)
+
     val detailsText = String.format(
-    Locale.US,
-    "Radius: %.0f metres\nAction: %s\nStatus: Active",
-    radius,
-    action.uppercase()
+        Locale.US,
+        "Radius: %.0f metres\nAction: %s\nStatus: Active\n\nSilent Schedule\n%s",
+        radius,
+        action.uppercase(),
+        scheduleText
     )
 
         val details =
