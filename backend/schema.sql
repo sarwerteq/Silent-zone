@@ -51,10 +51,10 @@ CREATE TABLE IF NOT EXISTS silent_zones (
     updated_by UUID REFERENCES app_users(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CHECK (
+  /*  CHECK (
         schedule_enabled = FALSE
         OR (schedule_start IS NOT NULL AND schedule_end IS NOT NULL)
-    )
+    ) */
 );
 
 CREATE TABLE IF NOT EXISTS device_tokens (
