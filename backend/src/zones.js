@@ -771,7 +771,8 @@ router.post(
       return res.status(500).json({
         success: false,
         message:
-          "Could not create zone"
+          "Could not create zone",
+        error: error.message
       });
     } finally {
       client.release();
