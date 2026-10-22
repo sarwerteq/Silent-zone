@@ -12,27 +12,56 @@ import adminRouter from "./admin.js";
 
 const app = express();
 
+/*
+ * Temporary deployment diagnostic.
+ * This route is intentionally placed immediately after
+ * express() so it is not affected by authentication.
+ */
+app.get("/api/debug-zones-route", (_req, res) => {
+  res.json({
+    success: true,
+    message: "NEW BACKEND APP.JS IS RUNNING",
+    time: new Date().toISOString()
+  });
+});
+
 if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
-  console.error("Set JWT_SECRET to a random secret of at least 32 characters.");
+  console.error(
+    "Set JWT_SECRET to a random secret of at least 32 characters."
+  );
   process.exit(1);
 }
 
 app.disable("x-powered-by");
+
 app.use(helmet());
-app.use(express.json({ limit: "100kb" }));
+
+app.use(
+  express.json({
+    limit: "100kb"
+  })
+);
 
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || "")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-app.use(cors({
-  origin(origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error("Origin not allowed"), false);
-  }
-}));
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Origin not allowed"), false);
+    }
+  })
+);
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -45,13 +74,20 @@ const authLimiter = rateLimit({
   }
 });
 
+/*
+ * Public API health/root routes
+ */
 app.get("/", (_req, res) => {
-  res.json({ name: "Silent Zone API", status: "running" });
+  res.json({
+    name: "Silent Zone API",
+    status: "running"
+  });
 });
 
 app.get("/api/health", async (_req, res) => {
   try {
     await query("SELECT 1");
+
     res.json({
       success: true,
       service: "silent-zone-api",
@@ -67,10 +103,36 @@ app.get("/api/health", async (_req, res) => {
   }
 });
 
+/*
+ * Authentication routes
+ */
 app.use("/api/auth", authLimiter, authRouter);
+
+/*
+ * IMPORTANT:
+ * /api/zones is intentionally NOT protected here.
+ *
+ * zones.js itself controls which routes are public/private.
+ *
+ * GET /api/zones
+ *     -> public mobile zone sync
+ *
+ * GET /api/zones/admin
+ *     -> protected inside zones.js
+ *
+ * POST/PATCH/etc.
+ *     -> protected inside zones.js
+ */
 app.use("/api/zones", zonesRouter);
+
+/*
+ * Admin routes are protected inside admin.js
+ */
 app.use("/api/admin", adminRouter);
 
+/*
+ * 404 handler
+ */
 app.use((_req, res) => {
   res.status(404).json({
     success: false,
@@ -78,6 +140,9 @@ app.use((_req, res) => {
   });
 });
 
+/*
+ * Global error handler
+ */
 app.use((err, _req, res, _next) => {
   if (err instanceof SyntaxError && "body" in err) {
     return res.status(400).json({
@@ -94,44 +159,66 @@ app.use((err, _req, res, _next) => {
   }
 
   console.error("API error:", err.message);
+
   return res.status(500).json({
     success: false,
     message: "Internal server error"
   });
 });
 
+/*
+ * Bootstrap SUPER_ADMIN
+ */
 async function bootstrapSuperAdmin() {
-  const email = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
+  const email = process.env.BOOTSTRAP_ADMIN_EMAIL
+    ?.trim()
+    .toLowerCase();
+
   const password = process.env.BOOTSTRAP_ADMIN_PASSWORD;
-  const displayName = process.env.BOOTSTRAP_ADMIN_NAME || "Super Admin";
+
+  const displayName =
+    process.env.BOOTSTRAP_ADMIN_NAME || "Super Admin";
 
   if (!email || !password) {
-    console.warn("Bootstrap admin not configured; no admin was created.");
+    console.warn(
+      "Bootstrap admin not configured; no admin was created."
+    );
     return;
   }
 
   if (password.length < 16 || password.length > 72) {
-    throw new Error("Bootstrap admin password must be 16–72 characters.");
+    throw new Error(
+      "Bootstrap admin password must be 16–72 characters."
+    );
   }
 
   const passwordHash = await bcrypt.hash(password, 12);
 
   await query(
-    `INSERT INTO app_users (email, password_hash, display_name, role)
-     VALUES ($1, $2, $3, 'SUPER_ADMIN')
+    `INSERT INTO app_users
+       (email, password_hash, display_name, role)
+     VALUES
+       ($1, $2, $3, 'SUPER_ADMIN')
      ON CONFLICT (email) DO NOTHING`,
     [email, passwordHash, displayName]
   );
 
-  console.log("Bootstrap admin checked. Existing account passwords are not changed.");
+  console.log(
+    "Bootstrap admin checked. Existing account passwords are not changed."
+  );
 }
 
 const port = Number(process.env.PORT) || 3000;
 
 app.listen(port, "0.0.0.0", () => {
-  console.log(`Silent Zone API listening on port ${port}`);
+  console.log(
+    `Silent Zone API listening on port ${port}`
+  );
 
   bootstrapSuperAdmin().catch((error) => {
-    console.error("Super admin bootstrap failed:", error.message);
+    console.error(
+      "Super admin bootstrap failed:",
+      error.message
+    );
   });
 });
