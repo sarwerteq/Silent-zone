@@ -7,18 +7,31 @@ const router = express.Router();
 const ADMIN_ROLES = ["AREA_ADMIN", "DISTRICT_ADMIN", "SUPER_ADMIN"];
 const CATEGORIES = ["MOSQUE", "SCHOOL", "HOSPITAL", "LIBRARY", "OTHER"];
 const ACTIONS = ["SILENT", "VIBRATE", "DND"];
+const ALL_DAYS = [1, 2, 3, 4, 5, 6, 7];
+
+/*
+  Day mapping:
+  1 = Monday
+  2 = Tuesday
+  3 = Wednesday
+  4 = Thursday
+  5 = Friday
+  6 = Saturday
+  7 = Sunday
+*/
 
 async function canManageArea(user, areaId, db = null) {
-  if (user.role === "SUPER_ADMIN") return true;
+  if (user.role === "SUPER_ADMIN") {
+    return true;
+  }
 
-  const runQuery = db
-    ? db.query.bind(db)
-    : query;
+  const runQuery = db ? db.query.bind(db) : query;
 
   const result = await runQuery(
     `SELECT 1
      FROM admin_area_assignments aa
-     JOIN admin_areas a ON a.id = aa.area_id
+     JOIN admin_areas a
+       ON a.id = aa.area_id
      WHERE aa.user_id = $1
        AND aa.area_id = $2
        AND a.is_active = TRUE`,
@@ -35,6 +48,29 @@ function validTime(value) {
   );
 }
 
+function normaliseDays(days) {
+  if (!Array.isArray(days)) {
+    return null;
+  }
+
+  const values = [...new Set(days.map(Number))]
+    .sort((a, b) => a - b);
+
+  if (
+    !values.length ||
+    values.some(
+      (day) =>
+        !Number.isInteger(day) ||
+        day < 1 ||
+        day > 7
+    )
+  ) {
+    return null;
+  }
+
+  return values;
+}
+
 function validateSchedules(schedules) {
   const errors = [];
 
@@ -43,8 +79,7 @@ function validateSchedules(schedules) {
   }
 
   if (schedules.length > 30) {
-    errors.push("A zone can have a maximum of 30 schedules");
-    return errors;
+    return ["A zone can have a maximum of 30 schedules"];
   }
 
   schedules.forEach((schedule, index) => {
@@ -77,6 +112,12 @@ function validateSchedules(schedules) {
       );
     }
 
+    if (!normaliseDays(schedule.days)) {
+      errors.push(
+        `Schedule ${number} must contain at least one valid day (1=Mon ... 7=Sun)`
+      );
+    }
+
     if (
       schedule.is_active !== undefined &&
       typeof schedule.is_active !== "boolean"
@@ -99,7 +140,9 @@ function validateZone(body, partial = false) {
       body.name.trim().length < 2 ||
       body.name.trim().length > 120
     ) {
-      errors.push("name must be 2–120 characters");
+      errors.push(
+        "name must be 2–120 characters"
+      );
     }
   }
 
@@ -156,21 +199,12 @@ function validateZone(body, partial = false) {
     );
   }
 
-  /*
-   * New multiple schedules.
-   */
   if (body.schedules !== undefined) {
     errors.push(
       ...validateSchedules(body.schedules)
     );
   }
 
-  /*
-   * Old single schedule validation.
-   *
-   * Keep this only when schedules[] was NOT sent.
-   * This keeps old admin/app compatible.
-   */
   if (
     body.schedule_enabled === true &&
     body.schedules === undefined
@@ -199,37 +233,9 @@ function validateZone(body, partial = false) {
   return errors;
 }
 
-async function getSchedulesForZones(db, zoneIds) {
-  if (!zoneIds.length) return new Map();
-
-  const result = await db.query(
-    `SELECT id,
-            zone_id,
-            name,
-            start_time,
-            end_time,
-            is_active,
-            created_at,
-            updated_at
-     FROM zone_schedules
-     WHERE zone_id = ANY($1::uuid[])
-     ORDER BY start_time ASC, name ASC`,
-    [zoneIds]
-  );
-
-  const map = new Map();
-
-  for (const schedule of result.rows) {
-    if (!map.has(schedule.zone_id)) {
-      map.set(schedule.zone_id, []);
-    }
-
-    map.get(schedule.zone_id).push(schedule);
-  }
-
-  return map;
-}
-
+/*
+  Replace all schedules of a zone.
+*/
 async function replaceSchedules(
   client,
   zoneId,
@@ -244,35 +250,53 @@ async function replaceSchedules(
   for (const schedule of schedules) {
     await client.query(
       `INSERT INTO zone_schedules
-        (
-          zone_id,
-          name,
-          start_time,
-          end_time,
-          is_active
-        )
-       VALUES ($1,$2,$3,$4,$5)`,
+       (
+         zone_id,
+         name,
+         start_time,
+         end_time,
+         days,
+         is_active
+       )
+       VALUES
+       (
+         $1,
+         $2,
+         $3,
+         $4,
+         $5::smallint[],
+         $6
+       )`,
       [
         zoneId,
         schedule.name.trim(),
         schedule.start_time,
         schedule.end_time,
+        normaliseDays(schedule.days) || ALL_DAYS,
         schedule.is_active ?? true
       ]
     );
   }
 }
 
-async function getZoneSchedules(client, zoneId) {
+/*
+  Get schedules of one zone.
+*/
+async function getZoneSchedules(
+  client,
+  zoneId
+) {
   const result = await client.query(
-    `SELECT id,
-            zone_id,
-            name,
-            start_time,
-            end_time,
-            is_active,
-            created_at,
-            updated_at
+    `SELECT
+       id,
+       zone_id,
+       name,
+       start_time,
+       end_time,
+       days,
+       is_active,
+       created_at,
+       updated_at
      FROM zone_schedules
      WHERE zone_id = $1
      ORDER BY start_time ASC, name ASC`,
@@ -283,75 +307,98 @@ async function getZoneSchedules(client, zoneId) {
 }
 
 /*
- * Mobile app/admin downloads active zones.
- */
+  Attach schedules to multiple zones.
+*/
+async function attachSchedules(
+  rows,
+  db = { query }
+) {
+  const zoneIds = rows.map(
+    (zone) => zone.id
+  );
+
+  if (!zoneIds.length) {
+    return rows.map((zone) => ({
+      ...zone,
+      schedules: []
+    }));
+  }
+
+  const result = await db.query(
+    `SELECT
+       id,
+       zone_id,
+       name,
+       start_time,
+       end_time,
+       days,
+       is_active,
+       created_at,
+       updated_at
+     FROM zone_schedules
+     WHERE zone_id = ANY($1::uuid[])
+     ORDER BY start_time ASC, name ASC`,
+    [zoneIds]
+  );
+
+  const map = new Map();
+
+  for (const schedule of result.rows) {
+    if (!map.has(schedule.zone_id)) {
+      map.set(schedule.zone_id, []);
+    }
+
+    map
+      .get(schedule.zone_id)
+      .push(schedule);
+  }
+
+  return rows.map((zone) => ({
+    ...zone,
+    schedules:
+      map.get(zone.id) || []
+  }));
+}
+
+/*
+  PUBLIC MOBILE SYNC
+  GET /api/zones
+*/
 router.get("/", async (_req, res) => {
   try {
     const result = await query(
-      `SELECT id,
-              area_id,
-              name,
-              category,
-              latitude,
-              longitude,
-              radius_meters AS radius_m,
-              sound_action,
-              schedule_enabled,
-              schedule_start,
-              schedule_end,
-              timezone,
-              version,
-              updated_at
-       FROM silent_zones
-       WHERE is_active = TRUE
-       ORDER BY updated_at DESC`
+      `SELECT
+         z.id,
+         z.area_id,
+         a.name AS area_name,
+         z.name,
+         z.category,
+         z.latitude,
+         z.longitude,
+         z.radius_meters AS radius_m,
+         z.sound_action,
+         z.schedule_enabled,
+         z.schedule_start,
+         z.schedule_end,
+         z.timezone,
+         z.version,
+         z.updated_at
+       FROM silent_zones z
+       JOIN admin_areas a
+         ON a.id = z.area_id
+       WHERE z.is_active = TRUE
+         AND a.is_active = TRUE
+       ORDER BY z.updated_at DESC`
     );
 
-    const zoneIds =
-      result.rows.map((zone) => zone.id);
+    const zones =
+      await attachSchedules(result.rows);
 
-    let scheduleMap = new Map();
-
-    if (zoneIds.length > 0) {
-      const scheduleResult = await query(
-        `SELECT id,
-                zone_id,
-                name,
-                start_time,
-                end_time,
-                is_active,
-                created_at,
-                updated_at
-         FROM zone_schedules
-         WHERE zone_id = ANY($1::uuid[])
-         ORDER BY start_time ASC, name ASC`,
-        [zoneIds]
-      );
-
-      for (const schedule of scheduleResult.rows) {
-        if (!scheduleMap.has(schedule.zone_id)) {
-          scheduleMap.set(
-            schedule.zone_id,
-            []
-          );
-        }
-
-        scheduleMap
-          .get(schedule.zone_id)
-          .push(schedule);
-      }
-    }
-
-    const zones = result.rows.map((zone) => ({
-      ...zone,
-      schedules:
-        scheduleMap.get(zone.id) || []
-    }));
-
-    res.json({
+    return res.json({
       success: true,
       zones,
-      server_time: new Date().toISOString()
+      server_time:
+        new Date().toISOString()
     });
   } catch (error) {
     console.error(
@@ -359,7 +406,7 @@ router.get("/", async (_req, res) => {
       error.message
     );
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Could not load zones"
     });
@@ -367,8 +414,168 @@ router.get("/", async (_req, res) => {
 });
 
 /*
- * CREATE ZONE
- */
+  AREAS THAT CURRENT ADMIN CAN MANAGE
+  GET /api/zones/manageable-areas
+*/
+router.get(
+  "/manageable-areas",
+  authenticate,
+  requireRoles(...ADMIN_ROLES),
+  async (req, res) => {
+    try {
+      const result =
+        req.user.role === "SUPER_ADMIN"
+          ? await query(
+              `SELECT
+                 id,
+                 name,
+                 district,
+                 state,
+                 country,
+                 is_active
+               FROM admin_areas
+               WHERE is_active = TRUE
+               ORDER BY
+                 state,
+                 district,
+                 name`
+            )
+          : await query(
+              `SELECT
+                 a.id,
+                 a.name,
+                 a.district,
+                 a.state,
+                 a.country,
+                 a.is_active
+               FROM admin_area_assignments aa
+               JOIN admin_areas a
+                 ON a.id = aa.area_id
+               WHERE aa.user_id = $1
+                 AND a.is_active = TRUE
+               ORDER BY
+                 a.state,
+                 a.district,
+                 a.name`,
+              [req.user.id]
+            );
+
+      return res.json({
+        success: true,
+        areas: result.rows
+      });
+    } catch (error) {
+      console.error(
+        "Manageable area list failed:",
+        error.message
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Could not load assigned areas"
+      });
+    }
+  }
+);
+
+/*
+  ADMIN ZONE LIST
+  GET /api/zones/admin
+*/
+router.get(
+  "/admin",
+  authenticate,
+  requireRoles(...ADMIN_ROLES),
+  async (req, res) => {
+    try {
+      let result;
+
+      if (req.user.role === "SUPER_ADMIN") {
+        result = await query(
+          `SELECT
+             z.id,
+             z.area_id,
+             a.name AS area_name,
+             z.name,
+             z.category,
+             z.latitude,
+             z.longitude,
+             z.radius_meters AS radius_m,
+             z.sound_action,
+             z.schedule_enabled,
+             z.schedule_start,
+             z.schedule_end,
+             z.timezone,
+             z.version,
+             z.updated_at
+           FROM silent_zones z
+           JOIN admin_areas a
+             ON a.id = z.area_id
+           WHERE z.is_active = TRUE
+           ORDER BY z.updated_at DESC`
+        );
+      } else {
+        result = await query(
+          `SELECT
+             z.id,
+             z.area_id,
+             a.name AS area_name,
+             z.name,
+             z.category,
+             z.latitude,
+             z.longitude,
+             z.radius_meters AS radius_m,
+             z.sound_action,
+             z.schedule_enabled,
+             z.schedule_start,
+             z.schedule_end,
+             z.timezone,
+             z.version,
+             z.updated_at
+           FROM silent_zones z
+           JOIN admin_areas a
+             ON a.id = z.area_id
+           JOIN admin_area_assignments aa
+             ON aa.area_id = z.area_id
+            AND aa.user_id = $1
+           WHERE z.is_active = TRUE
+             AND a.is_active = TRUE
+           ORDER BY z.updated_at DESC`,
+          [req.user.id]
+        );
+      }
+
+      const zones =
+        await attachSchedules(
+          result.rows
+        );
+
+      return res.json({
+        success: true,
+        zones,
+        server_time:
+          new Date().toISOString()
+      });
+    } catch (error) {
+      console.error(
+        "Admin zone list failed:",
+        error.message
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "Could not load zones"
+      });
+    }
+  }
+);
+
+/*
+  CREATE ZONE
+  POST /api/zones
+*/
 router.post(
   "/",
   authenticate,
@@ -378,13 +585,17 @@ router.post(
 
     try {
       const body = req.body || {};
-      const errors = validateZone(body);
+
+      const errors =
+        validateZone(body);
 
       if (
         !errors.length &&
         typeof body.area_id !== "string"
       ) {
-        errors.push("area_id is required");
+        errors.push(
+          "area_id is required"
+        );
       }
 
       if (
@@ -400,14 +611,12 @@ router.post(
       if (errors.length) {
         return res.status(400).json({
           success: false,
-          message: "Invalid zone data",
+          message:
+            "Invalid zone data",
           errors
         });
       }
 
-      /*
-       * Permission check before BEGIN.
-       */
       if (
         !(await canManageArea(
           req.user,
@@ -423,34 +632,45 @@ router.post(
 
       await client.query("BEGIN");
 
-      /*
-       * If new schedules[] is supplied,
-       * old single schedule columns are
-       * no longer used for decision making.
-       */
       const usingMultipleSchedules =
-        Array.isArray(body.schedules);
+        Array.isArray(
+          body.schedules
+        );
 
       const created =
         await client.query(
           `INSERT INTO silent_zones
-            (
-              area_id,
-              name,
-              category,
-              latitude,
-              longitude,
-              radius_meters,
-              sound_action,
-              schedule_enabled,
-              schedule_start,
-              schedule_end,
-              timezone,
-              created_by,
-              updated_by
-            )
+           (
+             area_id,
+             name,
+             category,
+             latitude,
+             longitude,
+             radius_meters,
+             sound_action,
+             schedule_enabled,
+             schedule_start,
+             schedule_end,
+             timezone,
+             created_by,
+             updated_by
+           )
            VALUES
-            ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12)
+           (
+             $1,
+             $2,
+             $3,
+             $4,
+             $5,
+             $6,
+             $7,
+             $8,
+             $9,
+             $10,
+             $11,
+             $12,
+             $12
+           )
            RETURNING *`,
           [
             body.area_id,
@@ -460,15 +680,18 @@ router.post(
             body.longitude,
             body.radius_m,
             body.sound_action,
-            body.schedule_enabled ?? false,
+            body.schedule_enabled ??
+              false,
 
             usingMultipleSchedules
               ? null
-              : body.schedule_start ?? null,
+              : body.schedule_start ??
+                null,
 
             usingMultipleSchedules
               ? null
-              : body.schedule_end ?? null,
+              : body.schedule_end ??
+                null,
 
             body.timezone ??
               "Asia/Kolkata",
@@ -477,7 +700,8 @@ router.post(
           ]
         );
 
-      const zone = created.rows[0];
+      const zone =
+        created.rows[0];
 
       if (usingMultipleSchedules) {
         await replaceSchedules(
@@ -495,37 +719,48 @@ router.post(
 
       const responseZone = {
         ...zone,
-        radius_m: zone.radius_meters,
+        radius_m:
+          zone.radius_meters,
         schedules
       };
 
       await client.query(
         `INSERT INTO zone_audit_logs
-          (
-            zone_id,
-            actor_user_id,
-            action,
-            details
-          )
+         (
+           zone_id,
+           actor_user_id,
+           action,
+           details
+         )
          VALUES
-          ($1,$2,'CREATE',$3::jsonb)`,
+         (
+           $1,
+           $2,
+           'CREATE',
+           $3::jsonb
+         )`,
         [
           zone.id,
           req.user.id,
-          JSON.stringify(responseZone)
+          JSON.stringify(
+            responseZone
+          )
         ]
       );
 
-      await client.query("COMMIT");
+      await client.query(
+        "COMMIT"
+      );
 
       return res.status(201).json({
         success: true,
         zone: responseZone
       });
-
     } catch (error) {
       try {
-        await client.query("ROLLBACK");
+        await client.query(
+          "ROLLBACK"
+        );
       } catch {}
 
       console.error(
@@ -535,9 +770,9 @@ router.post(
 
       return res.status(500).json({
         success: false,
-        message: "Could not create zone"
+        message:
+          "Could not create zone"
       });
-
     } finally {
       client.release();
     }
@@ -545,19 +780,23 @@ router.post(
 );
 
 /*
- * UPDATE ZONE
- */
+  UPDATE ZONE
+  PATCH /api/zones/:id
+*/
 router.patch(
   "/:id",
   authenticate,
   requireRoles(...ADMIN_ROLES),
   async (req, res) => {
-    const client = await pool.connect();
+    const client =
+      await pool.connect();
 
     try {
-      const body = req.body || {};
+      const body =
+        req.body || {};
 
       const allowedFields = [
+        "area_id",
         "name",
         "category",
         "latitude",
@@ -572,13 +811,16 @@ router.patch(
         "schedules"
       ];
 
-      const keys = Object.keys(body);
+      const keys =
+        Object.keys(body);
 
       if (
-        keys.length === 0 ||
+        !keys.length ||
         keys.some(
           (key) =>
-            !allowedFields.includes(key)
+            !allowedFields.includes(
+              key
+            )
         )
       ) {
         return res.status(400).json({
@@ -589,11 +831,28 @@ router.patch(
       }
 
       const errors =
-        validateZone(body, true);
+        validateZone(
+          body,
+          true
+        );
+
+      if (
+        body.area_id !== undefined &&
+        (
+          typeof body.area_id !==
+            "string" ||
+          !body.area_id.trim()
+        )
+      ) {
+        errors.push(
+          "area_id must be a valid area ID"
+        );
+      }
 
       if (
         body.is_active !== undefined &&
-        typeof body.is_active !== "boolean"
+        typeof body.is_active !==
+          "boolean"
       ) {
         errors.push(
           "is_active must be a boolean"
@@ -601,8 +860,11 @@ router.patch(
       }
 
       if (
-        body.schedule_enabled === true &&
-        Array.isArray(body.schedules) &&
+        body.schedule_enabled ===
+          true &&
+        Array.isArray(
+          body.schedules
+        ) &&
         body.schedules.length === 0
       ) {
         errors.push(
@@ -613,12 +875,15 @@ router.patch(
       if (errors.length) {
         return res.status(400).json({
           success: false,
-          message: "Invalid zone data",
+          message:
+            "Invalid zone data",
           errors
         });
       }
 
-      await client.query("BEGIN");
+      await client.query(
+        "BEGIN"
+      );
 
       const found =
         await client.query(
@@ -629,14 +894,18 @@ router.patch(
           [req.params.id]
         );
 
-      const oldZone = found.rows[0];
+      const oldZone =
+        found.rows[0];
 
       if (!oldZone) {
-        await client.query("ROLLBACK");
+        await client.query(
+          "ROLLBACK"
+        );
 
         return res.status(404).json({
           success: false,
-          message: "Zone not found"
+          message:
+            "Zone not found"
         });
       }
 
@@ -647,7 +916,9 @@ router.patch(
           client
         ))
       ) {
-        await client.query("ROLLBACK");
+        await client.query(
+          "ROLLBACK"
+        );
 
         return res.status(403).json({
           success: false,
@@ -657,39 +928,114 @@ router.patch(
       }
 
       /*
-       * schedules belongs to zone_schedules,
-       * not silent_zones.
-       */
+        Only SUPER_ADMIN can move
+        a zone to another area.
+      */
+      if (
+        body.area_id !== undefined &&
+        body.area_id !==
+          oldZone.area_id
+      ) {
+        if (
+          req.user.role !==
+          "SUPER_ADMIN"
+        ) {
+          await client.query(
+            "ROLLBACK"
+          );
+
+          return res.status(403).json({
+            success: false,
+            message:
+              "Only SUPER_ADMIN can move a zone to another area"
+          });
+        }
+
+        const targetArea =
+          await client.query(
+            `SELECT 1
+             FROM admin_areas
+             WHERE id = $1
+               AND is_active = TRUE`,
+            [body.area_id]
+          );
+
+        if (!targetArea.rowCount) {
+          await client.query(
+            "ROLLBACK"
+          );
+
+          return res.status(400).json({
+            success: false,
+            message:
+              "Target area not found or inactive"
+          });
+        }
+      }
+
       const zoneKeys =
         keys.filter(
-          (key) => key !== "schedules"
+          (key) =>
+            key !== "schedules"
         );
 
       const fields = {
-        name: "name",
-        category: "category",
-        latitude: "latitude",
-        longitude: "longitude",
-        radius_m: "radius_meters",
-        sound_action: "sound_action",
+        area_id:
+          "area_id",
+
+        name:
+          "name",
+
+        category:
+          "category",
+
+        latitude:
+          "latitude",
+
+        longitude:
+          "longitude",
+
+        radius_m:
+          "radius_meters",
+
+        sound_action:
+          "sound_action",
+
         schedule_enabled:
           "schedule_enabled",
         schedule_start:
           "schedule_start",
+
         schedule_end:
           "schedule_end",
-        timezone: "timezone",
-        is_active: "is_active"
+
+        timezone:
+          "timezone",
+
+        is_active:
+          "is_active"
       };
 
       const values = [];
       const sets = [];
 
-      for (const key of zoneKeys) {
-        let value = body[key];
+      for (
+        const key of zoneKeys
+      ) {
+        let value =
+          body[key];
+        if (
+          key === "name"
+        ) {
+          value =
+            value.trim();
+        }
 
-        if (key === "name") {
-          value = value.trim();
+        if (
+          key === "area_id"
+        ) {
+          value =
+            value.trim();
         }
 
         values.push(value);
@@ -700,11 +1046,14 @@ router.patch(
       }
 
       /*
-       * New schedules[] means old
-       * single start/end are cleared.
-       */
+        When schedules array is
+        supplied, old single schedule
+        fields are cleared.
+      */
       if (
-        Array.isArray(body.schedules)
+        Array.isArray(
+          body.schedules
+        )
       ) {
         values.push(null);
 
@@ -719,16 +1068,24 @@ router.patch(
         );
       }
 
-      values.push(req.user.id);
+      values.push(
+        req.user.id
+      );
 
       sets.push(
         `updated_by = $${values.length}`
       );
+      sets.push(
+        "updated_at = NOW()"
+      );
 
-      sets.push("updated_at = NOW()");
-      sets.push("version = version + 1");
+      sets.push(
+        "version = version + 1"
+      );
 
-      values.push(req.params.id);
+      values.push(
+        req.params.id
+      );
 
       const updated =
         await client.query(
@@ -740,7 +1097,9 @@ router.patch(
         );
 
       if (
-        Array.isArray(body.schedules)
+        Array.isArray(
+          body.schedules
+        )
       ) {
         await replaceSchedules(
           client,
@@ -758,42 +1117,52 @@ router.patch(
       const responseZone = {
         ...updated.rows[0],
         radius_m:
-          updated.rows[0].radius_meters,
+          updated.rows[0]
+            .radius_meters,
         schedules
       };
 
       await client.query(
         `INSERT INTO zone_audit_logs
-          (
-            zone_id,
-            actor_user_id,
-            action,
-            details
-          )
+        (
+        zone_id,
+           actor_user_id,
+           action,
+           details
+         )
          VALUES
-          ($1,$2,'UPDATE',$3::jsonb)`,
+         (
+           $1,
+           $2,
+           'UPDATE',
+           $3::jsonb
+         )`,
         [
           oldZone.id,
           req.user.id,
           JSON.stringify({
-            old_data: oldZone,
-            new_data: responseZone
+            old_data:
+              oldZone,
+            new_data:
+              responseZone
           })
         ]
       );
 
-      await client.query("COMMIT");
-
+      await client.query(
+        "COMMIT"
+      );
       return res.json({
         success: true,
         zone: responseZone,
         message:
           "Zone updated. Connected devices will sync on their next sync."
       });
-
     } catch (error) {
       try {
-        await client.query("ROLLBACK");
+        await client.query(
+          "ROLLBACK"
+        );
       } catch {}
 
       console.error(
@@ -803,13 +1172,12 @@ router.patch(
 
       return res.status(500).json({
         success: false,
-        message: "Could not update zone"
+        message:
+          "Could not update zone"
       });
-
     } finally {
       client.release();
     }
   }
 );
-
 export default router;
