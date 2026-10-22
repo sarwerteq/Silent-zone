@@ -267,6 +267,56 @@ async function loadZones() {
  * =========================================================
  */
 
+const SCHEDULE_DAYS = [
+  [1, "Mon"],
+  [2, "Tue"],
+  [3, "Wed"],
+  [4, "Thu"],
+  [5, "Fri"],
+  [6, "Sat"],
+  [7, "Sun"]
+];
+
+function normaliseScheduleDays(days) {
+  if (!Array.isArray(days) || days.length === 0) {
+    return SCHEDULE_DAYS.map(
+      ([value]) => value
+    );
+  }
+
+  return [...new Set(
+    days.map(Number)
+  )]
+    .filter(
+      (day) =>
+        Number.isInteger(day) &&
+        day >= 1 &&
+        day <= 7
+    )
+    .sort(
+      (a, b) => a - b
+    );
+}
+
+function scheduleDaysText(days) {
+  const selected =
+    normaliseScheduleDays(days);
+
+  if (selected.length === 7) {
+    return "Every day";
+  }
+
+  return SCHEDULE_DAYS
+    .filter(
+      ([value]) =>
+        selected.includes(value)
+    )
+    .map(
+      ([, label]) => label
+    )
+    .join(", ");
+}
+
 function normaliseTime(value) {
   if (!value) return "";
 
@@ -313,6 +363,7 @@ function addScheduleRow(
     document.createElement("input");
 
   nameInput.type = "text";
+
   nameInput.className =
     "schedule-name";
 
@@ -326,14 +377,87 @@ function addScheduleRow(
 
   nameInput.required = true;
 
+  /*
+   * =====================================================
+   * ACTIVE DAYS
+   * =====================================================
+   */
+
+  const daysLabel =
+    document.createElement("label");
+
+  daysLabel.textContent =
+    "Active days";
+
+  const daysBox =
+    document.createElement("div");
+
+  daysBox.className =
+    "schedule-days";
+
+  const selectedDays =
+    normaliseScheduleDays(
+      schedule.days
+    );
+
+  for (
+    const [dayValue, dayLabel]
+    of SCHEDULE_DAYS
+  ) {
+    const dayOption =
+      document.createElement("label");
+
+    dayOption.className =
+      "schedule-day-option";
+
+    const checkbox =
+      document.createElement("input");
+
+    checkbox.type = "checkbox";
+
+    checkbox.className =
+      "schedule-day";
+
+    checkbox.value =
+      String(dayValue);
+
+    checkbox.checked =
+      selectedDays.includes(
+        dayValue
+      );
+
+    const text =
+      document.createElement("span");
+
+    text.textContent =
+      dayLabel;
+
+    dayOption.append(
+      checkbox,
+      text
+    );
+
+    daysBox.append(
+      dayOption
+    );
+  }
+
+  /*
+   * =====================================================
+   * TIMES
+   * =====================================================
+   */
+
   const times =
     document.createElement("div");
 
-  times.className = "two-col";
+  times.className =
+    "two-col";
 
   /*
    * START
    */
+
   const startBox =
     document.createElement("div");
 
@@ -366,6 +490,7 @@ function addScheduleRow(
   /*
    * END
    */
+
   const endBox =
     document.createElement("div");
 
@@ -403,6 +528,7 @@ function addScheduleRow(
   /*
    * REMOVE BUTTON
    */
+
   const removeButton =
     document.createElement("button");
 
@@ -418,6 +544,7 @@ function addScheduleRow(
     "click",
     () => {
       row.remove();
+
       renumberSchedules();
     }
   );
@@ -426,6 +553,8 @@ function addScheduleRow(
     heading,
     nameLabel,
     nameInput,
+    daysLabel,
+    daysBox,
     times,
     removeButton
   );
@@ -475,6 +604,18 @@ function getSchedulesFromForm() {
         row.querySelector(
           ".schedule-name"
         ).value.trim(),
+
+      days:
+        Array.from(
+          row.querySelectorAll(
+            ".schedule-day:checked"
+          )
+        ).map(
+          (checkbox) =>
+            Number(
+              checkbox.value
+            )
+        ),
 
       start_time:
         row.querySelector(
@@ -545,10 +686,12 @@ function renderZones() {
       document.createElement("p");
 
     empty.className = "muted";
+
     empty.textContent =
       "No active zones found.";
 
     zoneList.append(empty);
+
     return;
   }
 
@@ -597,6 +740,7 @@ function renderZones() {
     /*
      * Schedule summary.
      */
+
     const scheduleInfo =
       document.createElement("p");
 
@@ -618,7 +762,7 @@ function renderZones() {
           )
           .map(
             (item) =>
-              `${item.name}: ` +
+              `${item.name} (${scheduleDaysText(item.days)}): ` +
               `${normaliseTime(
                 item.start_time
               )}–` +
@@ -638,6 +782,7 @@ function renderZones() {
       /*
        * Old single schedule.
        */
+
       scheduleInfo.textContent =
         `Schedule: ` +
         `${normaliseTime(
@@ -780,6 +925,7 @@ function fillEditForm(zone) {
     /*
      * New multiple schedules.
      */
+
     if (
       Array.isArray(
         zone.schedules
@@ -807,9 +953,18 @@ function fillEditForm(zone) {
       /*
        * Automatically convert an old
        * single schedule into the new UI.
+       *
+       * Old schedules have no days,
+       * therefore all 7 days are selected.
        */
+
       addScheduleRow({
         name: "Schedule 1",
+
+        days: [
+          1, 2, 3, 4,
+          5, 6, 7
+        ],
 
         start_time:
           zone.schedule_start,
@@ -951,6 +1106,7 @@ $("locationBtn")
              * Facility coordinates should
              * not use an old cached fix.
              */
+
             maximumAge: 0
           }
         );
@@ -1009,7 +1165,7 @@ zoneForm.addEventListener(
     /*
      * Safety validation.
      */
-    if (
+if (
       scheduleEnabled &&
       schedules.length === 0
     ) {
@@ -1023,9 +1179,8 @@ zoneForm.addEventListener(
         false;
 
       return;
-    }
-
-    if (scheduleEnabled) {
+}
+ if (scheduleEnabled) {
       for (
         let i = 0;
         i < schedules.length;
@@ -1036,15 +1191,18 @@ zoneForm.addEventListener(
 
         if (
           !schedule.name ||
+          !Array.isArray(
+            schedule.days
+          ) ||
+          schedule.days.length === 0 ||
           !schedule.start_time ||
           !schedule.end_time
         ) {
           showMessage(
             zoneMessage,
-            `Complete Schedule ${i + 1}.`,
+            `Complete Schedule ${i + 1} and select at least one day.`,
             "error"
           );
-
           submitButton.disabled =
             false;
 
@@ -1066,7 +1224,6 @@ zoneForm.addEventListener(
         Number(
           $("latitude").value
         ),
-
       longitude:
         Number(
           $("longitude").value
@@ -1089,8 +1246,8 @@ zoneForm.addEventListener(
        * If schedule is OFF,
        * send empty [].
        */
-      schedules,
 
+      schedules,
       timezone:
         $("timezone")
           .value
@@ -1113,7 +1270,6 @@ zoneForm.addEventListener(
               )
             }`
           : "/zones",
-
         {
           method:
             editId
@@ -1136,7 +1292,6 @@ zoneForm.addEventListener(
       );
 
       zoneForm.reset();
-
       $("timezone").value =
         "Asia/Kolkata";
 
@@ -1158,7 +1313,6 @@ zoneForm.addEventListener(
     }
   }
 );
-
 /*
  * =========================================================
  * DEACTIVATE
@@ -1184,7 +1338,6 @@ async function deactivateZone(
       }`,
       {
         method: "PATCH",
-
         body:
           JSON.stringify({
             is_active: false
@@ -1210,6 +1363,9 @@ async function deactivateZone(
   }
 }
 /*
- * Start at login screen.
+ * =========================================================
+ * START AT LOGIN SCREEN
+ * =========================================================
  */
-showLoggedOut()
+
+showLoggedOut();
