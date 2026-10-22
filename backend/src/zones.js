@@ -248,6 +248,14 @@ async function replaceSchedules(
   );
 
   for (const schedule of schedules) {
+    const days = normaliseDays(schedule.days);
+
+    if (!days || days.length === 0) {
+      throw new Error(
+        `Invalid days for schedule: ${schedule.name || "Unnamed schedule"}`
+      );
+    }
+
     await client.query(
       `INSERT INTO zone_schedules
        (
@@ -272,7 +280,7 @@ async function replaceSchedules(
         schedule.name.trim(),
         schedule.start_time,
         schedule.end_time,
-        normaliseDays(schedule.days) || ALL_DAYS,
+        days,
         schedule.is_active ?? true
       ]
     );
