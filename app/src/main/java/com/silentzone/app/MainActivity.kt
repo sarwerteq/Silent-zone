@@ -21,7 +21,6 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import android.os.Build
 
 import com.google.android.gms.location.*
 import com.google.android.gms.tasks.CancellationTokenSource
