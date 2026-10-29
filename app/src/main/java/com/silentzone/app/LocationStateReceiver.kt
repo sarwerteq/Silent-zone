@@ -7,7 +7,8 @@ import android.location.LocationManager
 
 class LocationStateReceiver:BroadcastReceiver(){
     override fun onReceive(context:Context,intent:Intent){
-        if(intent.action!=LocationManager.MODE_CHANGED_ACTION)return
+        if(intent.action != LocationManager.MODE_CHANGED_ACTION &&
+         intent.action != LocationManager.PROVIDERS_CHANGED_ACTION) return
         val c=context.applicationContext
 
         if(!LocationProtectionManager.isLocationEnabled(c)){
