@@ -21,6 +21,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.os.Build
 
 import com.google.android.gms.location.*
 import com.google.android.gms.tasks.CancellationTokenSource
@@ -46,6 +47,8 @@ class MainActivity : Activity() {
 
     private val locationPermissionCode = 100
 
+    private val notificationPermissionCode = 9001
+
     private val geofencePendingIntent: PendingIntent by lazy {
 
         val intent = Intent().apply {
@@ -69,8 +72,20 @@ class MainActivity : Activity() {
         )
     }
 
+    private fun requestNotificationPermission() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+        PackageManager.PERMISSION_GRANTED
+    ) {
+        requestPermissions(
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+            notificationPermissionCode
+        )
+    }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    
 
     geofencingClient =
         LocationServices.getGeofencingClient(this)
@@ -83,6 +98,7 @@ class MainActivity : Activity() {
     LocationPermissionManager.requestForegroundLocation(this)
 
       }
+    requestNotificationPermission()
     }
     private fun dp(value: Int): Int {
         return (
