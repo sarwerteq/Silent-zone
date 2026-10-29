@@ -42,13 +42,14 @@
         </receiver>
 
         <receiver
-            android:name=".LocationStateReceiver"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.location.MODE_CHANGED"/>
-            </intent-filter>
-        </receiver>
+    android:name=".LocationStateReceiver"
+    android:enabled="true"
+    android:exported="true">
+    <intent-filter>
+        <action android:name="android.location.MODE_CHANGED"/>
+        <action android:name="android.location.PROVIDERS_CHANGED"/>
+    </intent-filter>
+</receiver>
 
     </application>
 
