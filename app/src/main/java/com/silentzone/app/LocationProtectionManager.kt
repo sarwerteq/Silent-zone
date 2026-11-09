@@ -40,8 +40,8 @@ object LocationProtectionManager {
         c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(VERIFIED, false)
 
     fun canUseLocation(c: Context): Boolean {
-        if (c.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) return false
-        return isLocationEnabled(c)
+        return c.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED &&
+            isLocationEnabled(c)
     }
 
     fun showWarning(c: Context) {
@@ -53,19 +53,23 @@ object LocationProtectionManager {
         val p = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (p.getBoolean(WARNING_SHOWN, false)) return
 
-        val nm = c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Silent Zone location alerts", NotificationManager.IMPORTANCE_HIGH))
-        }
-
         if (Build.VERSION.SDK_INT >= 33 &&
             c.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
 
-        val n = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+        val nm = c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        if (Build.VERSION.SDK_INT >= 26) {
+            nm.createNotificationChannel(
+                NotificationChannel(CHANNEL, "Silent Zone location alerts", NotificationManager.IMPORTANCE_HIGH)
+            )
+        }
+
+        val builder = if (Build.VERSION.SDK_INT >= 26)
             android.app.Notification.Builder(c, CHANNEL)
         else android.app.Notification.Builder(c)
 
-        val notification = n.setSmallIcon(android.R.drawable.ic_dialog_alert)
+        val notification = builder
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
             .setContentTitle("Silent Zone protection limited")
             .setContentText("Location is turned off. Turn it on for automatic detection.")
             .setAutoCancel(false)
@@ -77,7 +81,8 @@ object LocationProtectionManager {
     }
 
     fun cancelWarning(c: Context) {
-        (c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).cancel(NOTIFICATION_ID)
+        (c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+            .cancel(NOTIFICATION_ID)
         c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(WARNING_SHOWN, false).apply()
     }
